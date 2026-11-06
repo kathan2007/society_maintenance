@@ -30,7 +30,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Healthcheck endpoint for Docker & CI/CD
+// Healthcheck & root endpoints for Docker, Render, and CI/CD
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "Society Maintenance API Gateway is Online", health: "/health" });
+});
+
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
