@@ -1,0 +1,46 @@
+# GitLab CI/CD Pipeline for Society Maintenance System
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+backend-test:
+  stage: test
+  image: node:20-alpine
+  services:
+    - name: mongo:7.0
+      alias: mongo
+  script:
+    - cd backend
+    - npm ci
+    - npm test
+  variables:
+    PORT: 5000
+    MONGODB_URI: mongodb://mongo:27017/societyDB
+    JWT_SECRET: testsecret
+
+frontend-build:
+  stage: test
+  image: node:20-alpine
+  script:
+    - cd frontend
+    - npm ci --legacy-peer-deps
+    - CI=false npm run build
+
+docker-build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - docker compose config
+    - docker build -t $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA ./backend
+    - docker build -t $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA ./frontend
+  only:
+    - main
+    - master
+
