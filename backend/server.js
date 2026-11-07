@@ -87,34 +87,89 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log("Disconnected"));
 });
 
-// Connect to Database
-connectDB();
+// Connect to Database and Seed Default Admin
+connectDB().then(() => {
+  seedAdmin();
+});
 
 // ===== Existing Routes (simplified for modular focus) =====
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 const JWT_SECRET = process.env.JWT_SECRET || "secretkey";
 
-// (Keep existing endpoints for backward compatibility or refactor further)
-// I will keep the main logic from the previous server.js version to ensure the app still works
+// Auto-seed default admin if no admin exists
+const seedAdmin = async () => {
+  try {
+    const adminExists = await User.findOne({ role: "admin" });
+    if (!adminExists) {
+      const hashed = await bcrypt.hash("admin", 10);
+      await User.create({
+        name: "Society Administrator",
+        username: "admin",
+        password: hashed,
+        flatNo: "OFFICE",
+        phoneNumber: "9999999999",
+        role: "admin",
+        category: "owner",
+        vehicleCount: 0
+      });
+      console.log("✅ Default Admin initialized: username: 'admin' | password: 'admin'");
+    }
+  } catch (err) {
+    console.error("Seed admin error:", err.message);
+  }
+};
 
 app.post("/register", async (req,res)=>{
   try {
     const {name,username,category,vehicleCount,vehicleNumbers,password,flatNo,phoneNumber,role} = req.body;
-    if(await User.findOne({username})) return res.status(400).json({message:"Username already exists"});
+    const cleanUsername = username ? username.toLowerCase().trim() : "";
+    if(!cleanUsername) return res.status(400).json({message:"Username is required"});
+    if(await User.findOne({username: cleanUsername})) return res.status(400).json({message:"Username already exists"});
+
+    const userRole = role === "admin" ? "admin" : "user";
+
+    // For admin, only admin details are required
+    if(userRole === "admin") {
+      if(!name || !password) {
+        return res.status(400).json({message:"Admin Name and Password are required"});
+      }
+    } else {
+      if(!flatNo || !phoneNumber) {
+        return res.status(400).json({message:"Flat Number and Phone Number are required"});
+      }
+    }
+
     const hashed = await bcrypt.hash(password,10);
-    const user = new User({name,username,category: category || "owner",vehicleCount: vehicleCount || 0,vehicleNumbers,password:hashed,flatNo,phoneNumber,role: role || "user"});
+    const user = new User({
+      name,
+      username: cleanUsername,
+      category: userRole === "admin" ? "owner" : (category || "owner"),
+      vehicleCount: userRole === "admin" ? 0 : (Number(vehicleCount) || 0),
+      vehicleNumbers: userRole === "admin" ? "" : (vehicleNumbers || ""),
+      password: hashed,
+      flatNo: userRole === "admin" ? (flatNo || "OFFICE") : flatNo,
+      phoneNumber: phoneNumber || (userRole === "admin" ? "0000000000" : ""),
+      role: userRole
+    });
     await user.save();
-    res.json({success:true,message:"Registration successful"});
+    res.json({success:true,message: userRole === "admin" ? "Admin registered successfully" : "Registration successful"});
   } catch(err) { res.status(500).json({message:err.message}) }
 });
 
 app.post("/login", async (req,res)=>{
   try{
-    const {username,password} = req.body;
-    const user = await User.findOne({username: username.toLowerCase().trim()});
+    const {username,password,role} = req.body;
+    const cleanUsername = username ? username.toLowerCase().trim() : "";
+    const user = await User.findOne({username: cleanUsername});
     if(!user) return res.status(404).json({message:"User not found"});
     if(!await bcrypt.compare(password,user.password)) return res.status(401).json({message:"Invalid password"});
+
+    if(role && user.role !== role) {
+      return res.status(403).json({
+        message: `Account '${cleanUsername}' is registered as ${user.role.toUpperCase()}. Please select the ${user.role === 'admin' ? 'Admin' : 'Resident'} tab.`
+      });
+    }
 
     const token = jwt.sign({id:user._id, role:user.role}, JWT_SECRET, {expiresIn:"1d"});
     res.json({success:true, token, role:user.role, name:user.name, userId:user._id, category:user.category || 'owner'});

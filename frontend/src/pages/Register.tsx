@@ -51,7 +51,7 @@ const Register: React.FC = () => {
       return;
     }
 
-    if (!/^[0-9]{10}$/.test(data.phoneNumber)) {
+    if (role === "user" && !/^[0-9]{10}$/.test(data.phoneNumber)) {
       setError("Please enter a valid 10-digit phone number.");
       setLoading(false);
       return;
@@ -125,35 +125,65 @@ const Register: React.FC = () => {
             {/* Form Fields */}
             <div className="row g-4">
               <div className="col-12">
-                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Full Legal Name</label>
-                <input name="name" type="text" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} placeholder="John Doe" required />
+                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">
+                  {role === "admin" ? "Admin Full Name" : "Full Legal Name"}
+                </label>
+                <input 
+                  name="name" 
+                  type="text" 
+                  className="form-control py-3 ps-4 fw-800 text-black border-2" 
+                  style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} 
+                  placeholder={role === "admin" ? "Society Administrator" : "John Doe"} 
+                  required 
+                />
               </div>
 
               <div className="col-12">
-                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Unique Username</label>
-                <input name="username" type="text" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} placeholder="john_doe_99" required />
+                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">
+                  {role === "admin" ? "Admin Username" : "Unique Username"}
+                </label>
+                <input 
+                  name="username" 
+                  type="text" 
+                  className="form-control py-3 ps-4 fw-800 text-black border-2" 
+                  style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} 
+                  placeholder={role === "admin" ? "admin" : "john_doe_99"} 
+                  required 
+                />
               </div>
 
-              <div className="col-md-4">
-                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Category</label>
-                <select name="category" className="form-select py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} required>
-                  <option value="owner">Owner</option>
-                  <option value="rent">Rent / Tenant</option>
-                </select>
-              </div>
+              {/* Resident Only Fields */}
+              {role === "user" && (
+                <>
+                  <div className="col-md-4">
+                    <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Category</label>
+                    <select name="category" className="form-select py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} required>
+                      <option value="owner">Owner</option>
+                      <option value="rent">Rent / Tenant</option>
+                    </select>
+                  </div>
 
-              <div className="col-md-4">
-                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Vehicles Count</label>
-                <input name="vehicleCount" type="number" min="0" defaultValue="0" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} required />
-              </div>
+                  <div className="col-md-4">
+                    <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Vehicles Count</label>
+                    <input name="vehicleCount" type="number" min="0" defaultValue="0" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} required />
+                  </div>
 
-              <div className="col-md-4">
-                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Vehicle Numbers</label>
-                <input name="vehicleNumbers" type="text" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} placeholder="GJ01XX1234, ..." />
-              </div>
+                  <div className="col-md-4">
+                    <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Vehicle Numbers</label>
+                    <input name="vehicleNumbers" type="text" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} placeholder="GJ01XX1234, ..." />
+                  </div>
 
-              <div className="col-md-6">
-                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Access Password</label>
+                  <div className="col-md-6">
+                    <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Flat / Unit Number</label>
+                    <input name="flatNo" type="text" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} placeholder="E.g. A-101" required />
+                  </div>
+                </>
+              )}
+
+              <div className={role === "admin" ? "col-md-6" : "col-md-6"}>
+                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">
+                  {role === "admin" ? "Admin Password" : "Access Password"}
+                </label>
                 <div className="position-relative">
                   <input 
                     name="password" 
@@ -173,16 +203,18 @@ const Register: React.FC = () => {
                 </div>
               </div>
 
-              <div className="col-md-6">
+              <div className={role === "admin" ? "col-md-6" : "col-md-6"}>
                 <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">
-                  {role === "admin" ? "Secret Admin Code" : "Flat / Unit Number"}
+                  {role === "admin" ? "Admin Contact Number" : "Phone Number"}
                 </label>
-                <input name="flatNo" type="text" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} placeholder="E.g. A-101" required />
-              </div>
-
-              <div className="col-md-6">
-                <label className="extra-small text-black fw-900 text-uppercase mb-2 ms-1 letter-spacing-1">Phone Number</label>
-                <input name="phoneNumber" type="text" className="form-control py-3 ps-4 fw-800 text-black border-2" style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} placeholder="10 Digits" required />
+                <input 
+                  name="phoneNumber" 
+                  type="text" 
+                  className="form-control py-3 ps-4 fw-800 text-black border-2" 
+                  style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}} 
+                  placeholder="10 Digits" 
+                  required={role === "user"}
+                />
               </div>
             </div>
 

@@ -45,7 +45,7 @@ const UserSchema = new mongoose.Schema(
 
     flatNo: {
       type: String,
-      required: true,
+      default: "OFFICE",
       trim: true,
     },
 

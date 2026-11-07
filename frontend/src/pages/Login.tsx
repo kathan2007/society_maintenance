@@ -104,13 +104,15 @@ const Login: React.FC = () => {
 
             {/* --- INPUTS --- */}
             <div className="mb-4">
-              <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block letter-spacing-1">Username</label>
+              <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block letter-spacing-1">
+                {role === "admin" ? "Admin Username" : "Resident Username"}
+              </label>
               <div className="position-relative">
                  <input
                     type="text"
                     className="form-control py-3 ps-4 fw-800 text-black border-2"
                     style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc', fontSize: '0.9rem'}}
-                    placeholder="E.g. johndoe_123"
+                    placeholder={role === "admin" ? "admin" : "E.g. johndoe_123"}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -119,7 +121,9 @@ const Login: React.FC = () => {
             </div>
 
             <div className="mb-4">
-              <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block letter-spacing-1">Security Password</label>
+              <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block letter-spacing-1">
+                {role === "admin" ? "Admin Password" : "Security Password"}
+              </label>
               <input
                 type="password"
                 className="form-control py-3 ps-4 fw-800 text-black border-2"
@@ -130,6 +134,14 @@ const Login: React.FC = () => {
                 required
               />
             </div>
+
+            {role === "admin" && (
+              <div className="mb-3 p-2 bg-light rounded-2 text-center border">
+                <span className="extra-small text-muted fw-bold">
+                  Default credentials: <code className="text-primary">admin</code> / <code className="text-primary">admin</code>
+                </span>
+              </div>
+            )}
 
             {/* --- ACTION BUTTON --- */}
             <button
