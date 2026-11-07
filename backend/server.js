@@ -27,7 +27,29 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// CORS - Allow frontend domains (Vercel, localhost dev)
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5000",
+  process.env.FRONTEND_URL,        // e.g. https://your-app.vercel.app
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    // Allow any vercel.app subdomain
+    if (origin.endsWith(".vercel.app") || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error("CORS: Not allowed by policy"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
 app.use(express.json());
 
 // Healthcheck & root endpoints for Docker, Render, and CI/CD
@@ -41,7 +63,15 @@ app.get("/health", (req, res) => {
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  cors: {
+    origin: function (origin, callback) {
+      if (!origin || origin.endsWith(".vercel.app") || origin === "http://localhost:3000") {
+        return callback(null, true);
+      }
+      callback(new Error("Socket CORS: Not allowed"));
+    },
+    methods: ["GET", "POST"]
+  }
 });
 
 // Initialize Socket Manager
