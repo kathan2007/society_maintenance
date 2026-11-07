@@ -19,7 +19,7 @@ const verifyToken = (req, res, next) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, "secretkey"); // Use same secret as login
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secretkey");
     req.user = decoded; // { id: user._id, role: user.role }
 
     next(); // Continue to the route
