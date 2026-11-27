@@ -573,32 +573,69 @@ app.get("/maintenance", verifyToken, async (req, res) => {
 app.post("/maintenance/generate", verifyToken, requireRole("admin"), async (req, res) => {
   try {
     const { userId, month } = req.body;
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
     const settings = (await Settings.findOne()) || {
       ownerMaintenanceAmount: 800,
       rentMaintenanceAmount: 1000,
     };
-    const amount = user.category === "rent" ? settings.rentMaintenanceAmount : settings.ownerMaintenanceAmount;
 
-    // Prevent duplicate bill for same user and month
-    const existing = await Maintenance.findOne({ userId, month });
-    if (existing) {
-      return res.status(409).json({ message: `Bill for ${month} already exists for this resident` });
+    if (userId) {
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const amount = user.category === "rent" ? settings.rentMaintenanceAmount : settings.ownerMaintenanceAmount;
+      const existing = await Maintenance.findOne({ userId, month });
+      if (existing) {
+        return res.status(409).json({ message: `Bill for ${month} already exists for this resident` });
+      }
+
+      const newBill = await Maintenance.create({
+        userId,
+        month,
+        amount,
+        penalty: 0,
+        status: "Pending",
+      });
+
+      return res.status(201).json(newBill);
     }
 
-    const newBill = await Maintenance.create({
-      userId,
-      month,
-      amount,
-      penalty: 0,
-      status: "Pending",
-    });
+    // Generate for all residents
+    const users = await User.find({ role: "user" });
+    let createdCount = 0;
+    for (const u of users) {
+      const existing = await Maintenance.findOne({ userId: u._id, month });
+      if (!existing) {
+        const amount = u.category === "rent" ? settings.rentMaintenanceAmount : settings.ownerMaintenanceAmount;
+        await Maintenance.create({
+          userId: u._id,
+          month,
+          amount,
+          penalty: 0,
+          status: "Pending",
+        });
+        createdCount++;
+      }
+    }
 
-    res.status(201).json(newBill);
+    res.status(201).json({ success: true, message: `Generated bills for ${createdCount} residents for ${month}` });
   } catch (err) {
     res.status(500).json({ message: "Error generating maintenance bill" });
+  }
+});
+
+// Admin manual offline collection / mark as paid
+app.put("/maintenance/:id/collect", verifyToken, requireRole("admin"), async (req, res) => {
+  try {
+    const bill = await Maintenance.findById(req.params.id);
+    if (!bill) return res.status(404).json({ message: "Maintenance bill not found" });
+
+    bill.status = "Paid";
+    bill.transactionId = req.body.transactionId || `CASH-${Date.now().toString().slice(-6)}`;
+    await bill.save();
+
+    res.json({ success: true, bill });
+  } catch (err) {
+    res.status(500).json({ message: "Error recording collection" });
   }
 });
 

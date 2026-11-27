@@ -64,6 +64,21 @@ const MaintenancePage: React.FC = () => {
     }
   };
 
+  const handleMarkCollected = async (bill: Maintenance) => {
+    if (!window.confirm(`Mark Unit ${typeof bill.userId === "object" ? bill.userId?.flatNo : ""} bill for ${bill.month} as Paid (Cash / Offline)?`)) {
+      return;
+    }
+    try {
+      await apiClient.put(`/maintenance/${bill._id}/collect`, {
+        transactionId: `OFFLINE-${Date.now().toString().slice(-6)}`,
+      });
+      toast.success("Bill marked as Paid");
+      fetchBills();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to mark as paid");
+    }
+  };
+
   const handleDownloadReceipt = (bill: Maintenance) => {
     generateReceiptPdf({
       societyName: "Shree Hari Gift City Residential Association",
@@ -280,6 +295,17 @@ const MaintenancePage: React.FC = () => {
                           >
                             <Download size={14} />
                             <span>Receipt PDF</span>
+                          </button>
+                        ) : role === "admin" ? (
+                          <button
+                            type="button"
+                            className="btn-outline-gold"
+                            onClick={() => handleMarkCollected(b)}
+                            style={{ minHeight: "36px", padding: "0 12px", fontSize: "var(--text-xs)" }}
+                            title="Mark resident dues as collected offline / cash"
+                          >
+                            <CheckCircle size={14} />
+                            <span>Mark Paid</span>
                           </button>
                         ) : (
                           <button
