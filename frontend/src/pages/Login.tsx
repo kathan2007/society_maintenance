@@ -24,24 +24,33 @@ const Login: React.FC = () => {
     try {
       setLoading(true);
       const res = await authApi.login(username, password);
-      const { token, user } = res.data as any;
+      const data = res.data as any;
+      const token = data.token;
+      const userObj = data.user || data;
+
+      const userId = userObj._id || userObj.userId || userObj.id || data.userId || data.id || "unknown";
+      const userRole = (userObj.role || data.role || role || "user").toLowerCase();
+      const userName = userObj.name || data.name || username;
+      const flatNo = userObj.flatNo || data.flatNo || "A-101";
+      const category = userObj.category || data.category || "owner";
 
       const authUser: AuthUser = {
-        id: user._id || user.userId,
-        role: user.role,
-        name: user.name,
-        flatNo: user.flatNo,
+        id: userId,
+        role: userRole as "user" | "admin",
+        name: userName,
+        flatNo: flatNo,
       };
 
-      // persist legacy keys for compatibility with existing pages
-      localStorage.setItem("role", user.role);
-      localStorage.setItem("name", user.name || "");
-      localStorage.setItem("userId", authUser.id);
-      localStorage.setItem("category", user.category || "owner");
+      // Persist legacy keys for full compatibility across all resident & admin screens
+      localStorage.setItem("token", token);
+      localStorage.setItem("role", userRole);
+      localStorage.setItem("name", userName);
+      localStorage.setItem("userId", userId);
+      localStorage.setItem("category", category);
 
       login(token, authUser);
-      toast.success(`Welcome, ${user.name || username}!`);
-      navigate(user.role === "admin" ? "/admin-dashboard" : "/dashboard", { replace: true });
+      toast.success(`Welcome, ${userName}!`);
+      navigate(userRole === "admin" ? "/admin-dashboard" : "/dashboard", { replace: true });
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
