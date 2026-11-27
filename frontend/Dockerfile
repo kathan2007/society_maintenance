@@ -22,7 +22,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Serve with lightweight Nginx
-FROM nginx:1.27-alpine AS production
+FROM nginx:1.29-alpine AS production
 
 # Copy compiled React assets from build stage
 COPY --from=build /app/build /usr/share/nginx/html
