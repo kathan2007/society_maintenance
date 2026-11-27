@@ -62,6 +62,7 @@ const AdminDashboard: React.FC = () => {
     ownerMaintenanceAmount: 800,
     rentMaintenanceAmount: 1000,
     penaltyAmount: 100,
+    penaltyDueDay: 15,
   });
   const [updatingSettings, setUpdatingSettings] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -398,7 +399,7 @@ const AdminDashboard: React.FC = () => {
                     required
                   />
                 </div>
-                <div className="col-12">
+                <div className="col-sm-6">
                   <label className="form-label-v3">Late Payment Penalty (₹ / month)</label>
                   <input
                     type="number"
@@ -410,6 +411,23 @@ const AdminDashboard: React.FC = () => {
                     min={0}
                     required
                   />
+                </div>
+                <div className="col-sm-6">
+                  <label className="form-label-v3">Penalty Due Day of Month</label>
+                  <input
+                    type="number"
+                    className="form-control-v3"
+                    value={settings.penaltyDueDay || 15}
+                    onChange={(e) =>
+                      setSettings({ ...settings, penaltyDueDay: Number(e.target.value) })
+                    }
+                    min={1}
+                    max={31}
+                    required
+                  />
+                  <small style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
+                    Bills unpaid after this day will automatically incur penalty.
+                  </small>
                 </div>
               </div>
               <button

@@ -17,6 +17,13 @@ const SettingsSchema = new mongoose.Schema(
       required: true,
       default: 100,
     },
+    penaltyDueDay: {
+      type: Number,
+      required: true,
+      default: 15,
+      min: 1,
+      max: 31,
+    },
   },
   { timestamps: true }
 );

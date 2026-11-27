@@ -556,9 +556,72 @@ app.post("/logout-all", verifyToken, async (req, res) => {
 // LAYER 4: AUTHORIZED APPLICATION ROUTES (IDOR / BOLA PROTECTED)
 // =========================================================================
 
-// --- Maintenance Bills ---
+// Helper function to calculate and update late payment penalty
+// If current date > due day (default 15th) of the bill month, apply penalty set by admin
+const applyLatePaymentPenalties = async () => {
+  try {
+    const s = (await Settings.findOne()) || {
+      ownerMaintenanceAmount: 800,
+      rentMaintenanceAmount: 1000,
+      penaltyAmount: 100,
+      penaltyDueDay: 15,
+    };
+
+    const dueDay = s.penaltyDueDay || 15;
+    const penaltyAmt = s.penaltyAmount || 100;
+    const now = new Date();
+
+    // Find all pending bills
+    const pendingBills = await Maintenance.find({ status: "Pending" });
+
+    for (const bill of pendingBills) {
+      let isOverdue = false;
+
+      // Bill month format: "YYYY-MM" or "Month YYYY"
+      let billYear = null;
+      let billMonthIndex = null; // 0-indexed
+
+      if (bill.month && bill.month.includes("-")) {
+        const parts = bill.month.split("-");
+        billYear = parseInt(parts[0], 10);
+        billMonthIndex = parseInt(parts[1], 10) - 1;
+      } else if (bill.month) {
+        const parsedDate = new Date(`${bill.month} 1`);
+        if (!isNaN(parsedDate.getTime())) {
+          billYear = parsedDate.getFullYear();
+          billMonthIndex = parsedDate.getMonth();
+        }
+      }
+
+      if (billYear !== null && billMonthIndex !== null) {
+        // Due date is the Xth (e.g. 15th) day of that bill month at 23:59:59
+        const deadline = new Date(billYear, billMonthIndex, dueDay, 23, 59, 59, 999);
+        if (now > deadline) {
+          isOverdue = true;
+        }
+      } else if (bill.createdAt) {
+        // Fallback: check 15 days from bill creation
+        const billCreated = new Date(bill.createdAt);
+        const deadline = new Date(billCreated.getFullYear(), billCreated.getMonth(), dueDay, 23, 59, 59, 999);
+        if (now > deadline) {
+          isOverdue = true;
+        }
+      }
+
+      if (isOverdue && bill.penalty !== penaltyAmt) {
+        bill.penalty = penaltyAmt;
+        await bill.save();
+      }
+    }
+  } catch (err) {
+    console.error("Penalty calculation error:", err);
+  }
+};
 app.get("/maintenance", verifyToken, async (req, res) => {
   try {
+    // Automatically apply overdue penalties if past the 15th
+    await applyLatePaymentPenalties();
+
     // IDOR protection: residents see only their bills; admins see all
     const filter = req.user.role === "admin" ? {} : { userId: req.user.id };
     const list = await Maintenance.find(filter)
@@ -838,6 +901,45 @@ app.delete("/admin/users/:id", verifyToken, requireRole("admin"), async (req, re
   }
 });
 
+// ===== Settings Management (Admin Only) =====
+app.get("/settings", verifyToken, async (req, res) => {
+  try {
+    let settings = (await Settings.findOne()) || (await Settings.create({
+      ownerMaintenanceAmount: 800,
+      rentMaintenanceAmount: 1000,
+      penaltyAmount: 100,
+      penaltyDueDay: 15,
+    }));
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching settings" });
+  }
+});
+
+app.put("/settings", verifyToken, requireRole("admin"), async (req, res) => {
+  try {
+    const { ownerMaintenanceAmount, rentMaintenanceAmount, penaltyAmount, penaltyDueDay } = req.body;
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = new Settings({});
+    }
+
+    if (ownerMaintenanceAmount !== undefined) settings.ownerMaintenanceAmount = Number(ownerMaintenanceAmount);
+    if (rentMaintenanceAmount !== undefined) settings.rentMaintenanceAmount = Number(rentMaintenanceAmount);
+    if (penaltyAmount !== undefined) settings.penaltyAmount = Number(penaltyAmount);
+    if (penaltyDueDay !== undefined) settings.penaltyDueDay = Math.min(31, Math.max(1, Number(penaltyDueDay)));
+
+    await settings.save();
+
+    // Re-apply penalties right away with the updated rate/date
+    await applyLatePaymentPenalties();
+
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ message: "Error updating settings" });
+  }
+});
+
 // =========================================================================
 // LAYER 7: DATA PRIVACY & MINIMIZATION (DPDP ACT 2023)
 // =========================================================================
@@ -899,6 +1001,15 @@ cron.schedule("0 0 1 * *", async () => {
     }
   } catch (err) {
     console.error("Cron billing error:", err);
+  }
+});
+
+// Daily cron at 00:05: Automatically calculate and apply overdue penalties (after 15th)
+cron.schedule("5 0 * * *", async () => {
+  try {
+    await applyLatePaymentPenalties();
+  } catch (err) {
+    console.error("Cron penalty calculation error:", err);
   }
 });
 
