@@ -1,6 +1,5 @@
-import API_BASE_URL from "../config/api";
-import React, { useEffect, useState } from "react";
-import axios from "axios";
+import React, { useEffect, useState, useMemo } from "react";
+import apiClient from "../api/client";
 import { motion } from "framer-motion";
 import { Download, FileText, Calendar, Building, CheckCircle, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import { jsPDF } from "jspdf";
@@ -18,36 +17,25 @@ const Reports: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [toast, setToast] = useState("");
 
-  const token = localStorage.getItem("token");
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [mntRes, expRes] = await Promise.all([
-          axios.get(`${API_BASE_URL}/maintenance?all=true`, { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${API_BASE_URL}/expense`, { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
-        setMaintenance(mntRes.data);
-        setExpenses(expRes.data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [token]);
-
-  useEffect(() => {
-    if ((maintenance.length > 0 || expenses.length > 0) && !selectedMonth) {
-      const months = [
-        ...maintenance.map((m) => stdMonth(m.month)),
-        ...expenses.map((e) => stdMonth(e.date?.substring(0, 7) || "")),
-      ].filter(Boolean);
-      const unique = Array.from(new Set(months)).sort().reverse();
-      if (unique.length > 0) setSelectedMonth(unique[0]);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [mntRes, expRes] = await Promise.all([
+        apiClient.get<MaintenanceType[]>("/maintenance"),
+        apiClient.get<ExpenseType[]>("/expense"),
+      ]);
+      setMaintenance(mntRes.data || []);
+      setExpenses(expRes.data || []);
+    } catch (err) {
+      console.error("Reports fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-  }, [maintenance, expenses, selectedMonth]);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const stdMonth = (s: string) => {
     if (!s) return "";
@@ -59,17 +47,51 @@ const Reports: React.FC = () => {
 
   const fmtMonth = (s: string) => {
     if (!s) return "";
-    const [y, m] = s.split("-");
-    const d = new Date(parseInt(y), parseInt(m) - 1);
-    return d.toLocaleString("default", { month: "long", year: "numeric" });
+    if (s.match(/^\d{4}-\d{2}$/)) {
+      const [y, m] = s.split("-");
+      const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+      return d.toLocaleString("default", { month: "long", year: "numeric" });
+    }
+    return s;
   };
 
-  const availableMonths = Array.from(
-    new Set([
-      ...maintenance.map((m) => stdMonth(m.month)),
-      ...expenses.map((e) => stdMonth(e.date?.substring(0, 7) || "")),
-    ].filter(Boolean))
-  ).sort().reverse();
+  // Generate available months: always include current month and past 11 months + any recorded months
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+
+    // 1. Add current and past 11 months so user can always choose any month even before data exists
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      monthsSet.add(mStr);
+    }
+
+    // 2. Add any months present in maintenance or expenses
+    maintenance.forEach((m) => {
+      const sm = stdMonth(m.month);
+      if (sm) monthsSet.add(sm);
+    });
+    expenses.forEach((e) => {
+      const sm = stdMonth(e.date?.substring(0, 7) || "");
+      if (sm) monthsSet.add(sm);
+    });
+
+    return Array.from(monthsSet).sort().reverse();
+  }, [maintenance, expenses]);
+
+  // Set default selection to current month or first available
+  useEffect(() => {
+    if (!selectedMonth && availableMonths.length > 0) {
+      const now = new Date();
+      const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      if (availableMonths.includes(currentMonthStr)) {
+        setSelectedMonth(currentMonthStr);
+      } else {
+        setSelectedMonth(availableMonths[0]);
+      }
+    }
+  }, [availableMonths, selectedMonth]);
 
   const getMonthlyData = () => {
     const monthlyIncome = maintenance
@@ -251,27 +273,36 @@ const Reports: React.FC = () => {
             <Calendar size={14} /> Select Period
           </label>
           {loading ? (
-            <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-3) 0", color: "var(--text-muted)" }}>
+              <Loader2 size={18} className="animate-spin" style={{ color: "var(--accent)" }} />
+              <span style={{ fontSize: "var(--text-sm)" }}>Loading periods...</span>
+            </div>
           ) : (
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "var(--space-3) var(--space-4)",
-                border: "1.5px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                fontSize: "var(--text-base)",
-                color: "var(--text-primary)",
-                background: "var(--bg-canvas)",
-                outline: "none",
-              }}
-            >
-              <option value="">Choose month…</option>
-              {availableMonths.map((m) => (
-                <option key={m} value={m}>{fmtMonth(m)}</option>
-              ))}
-            </select>
+            <div style={{ position: "relative" }}>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "var(--space-3) var(--space-4)",
+                  border: "1.5px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: "var(--text-base)",
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                  backgroundColor: "var(--bg-surface)",
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">Choose month…</option>
+                {availableMonths.map((m) => (
+                  <option key={m} value={m}>
+                    {fmtMonth(m)}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
 
