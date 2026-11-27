@@ -115,16 +115,16 @@ const Expenses: React.FC = () => {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.text(`Total Expenditure: ₹${totalOutflow.toLocaleString("en-IN")}`, 14, 50);
+    doc.text(`Total Expenditure: Rs. ${totalOutflow.toLocaleString("en-IN")}`, 14, 50);
 
     autoTable(doc, {
       startY: 56,
-      head: [["Date", "Description", "Category", "Amount (₹)", "By"]],
+      head: [["Date", "Description", "Category", "Amount (Rs.)", "By"]],
       body: expenses.map((exp) => [
         new Date(exp.date).toLocaleDateString("en-IN"),
         exp.title,
         exp.category,
-        exp.amount.toLocaleString("en-IN"),
+        `Rs. ${exp.amount.toLocaleString("en-IN")}`,
         exp.addedBy?.name || "Admin",
       ]),
       theme: "grid",
