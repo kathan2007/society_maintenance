@@ -1,31 +1,46 @@
-import jwt from "jsonwebtoken";
+import { verifyAccessToken } from "../utils/authUtils.js";
+import User from "../models/User.js";
 
 /**
- * Middleware to verify JWT token and attach user info to req.user
- * Usage: add `verifyToken` to protected routes
+ * Middleware to verify JWT access token
+ * Supports Authorization header: Bearer <token> or access_token cookie
  */
-
-const verifyToken = (req, res, next) => {
+export const verifyToken = async (req, res, next) => {
   try {
-    // Get token from Authorization header (Bearer <token>)
+    let token = null;
+
     const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ message: "Token missing" });
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    } else if (req.cookies && req.cookies.access_token) {
+      token = req.cookies.access_token;
     }
 
-    const token = authHeader.split(" ")[1];
     if (!token) {
-      return res.status(401).json({ message: "Token missing" });
+      return res.status(401).json({ message: "Authentication required: token missing" });
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secretkey");
-    req.user = decoded; // { id: user._id, role: user.role }
+    const decoded = verifyAccessToken(token);
 
-    next(); // Continue to the route
+    // Optional quick check to ensure user wasn't deactivated
+    const user = await User.findById(decoded.id).select("role isActive");
+    if (!user || !user.isActive) {
+      return res.status(401).json({ message: "User account deactivated or not found" });
+    }
+
+    req.user = {
+      id: decoded.id,
+      role: user.role,
+      name: decoded.name,
+      flatNo: decoded.flatNo,
+    };
+
+    next();
   } catch (err) {
-    console.error("JWT verification error:", err);
-    return res.status(401).json({ message: "Invalid token" });
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Token expired", code: "TOKEN_EXPIRED" });
+    }
+    return res.status(401).json({ message: "Invalid or forged token" });
   }
 };
 
