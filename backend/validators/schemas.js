@@ -39,6 +39,7 @@ export const LoginSchema = z
   .object({
     username: z.string().min(1).transform((val) => val.toLowerCase().trim()),
     password: z.string().min(1),
+    role: z.string().optional(),
     totpToken: z.string().length(6).optional(),
   })
   .strict();

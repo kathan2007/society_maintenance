@@ -279,19 +279,19 @@ connectDB().then(() => {
 
 const seedAdminSafely = async () => {
   try {
-    const adminExists = await User.findOne({ role: "admin" });
-    if (!adminExists) {
-      const adminUsername = process.env.ADMIN_USERNAME || "admin";
-      const adminPassword = process.env.ADMIN_PASSWORD || "admin";
+    const adminUsername = (process.env.ADMIN_USERNAME || "admin").toLowerCase().trim();
+    const adminPassword = process.env.ADMIN_PASSWORD || "admin";
 
-      if (process.env.NODE_ENV === "production" && adminPassword === "admin") {
-        console.warn("⚠️ SECURITY WARNING: Default admin password in production! Set ADMIN_PASSWORD immediately.");
-      }
+    let admin = await User.findOne({ username: adminUsername }).select("+password");
+    if (!admin) {
+      admin = await User.findOne({ role: "admin" }).select("+password");
+    }
 
+    if (!admin) {
       const hashed = await hashPassword(adminPassword);
       await User.create({
         name: "Society Administrator",
-        username: adminUsername.toLowerCase().trim(),
+        username: adminUsername,
         password: hashed,
         flatNo: "OFFICE",
         phoneNumber: "9999999999",
@@ -300,6 +300,16 @@ const seedAdminSafely = async () => {
         vehicleCount: 0,
       });
       console.log(`✅ Administrator initialized: username: '${adminUsername}'`);
+    } else {
+      // Sync admin credentials and unlock account
+      admin.username = adminUsername;
+      admin.role = "admin";
+      admin.failedLoginAttempts = 0;
+      admin.lockUntil = null;
+      admin.isActive = true;
+      admin.password = await hashPassword(adminPassword);
+      await admin.save();
+      console.log(`✅ Administrator synced: username: '${adminUsername}' | password ready`);
     }
   } catch (err) {
     console.error("Admin init error:", err.message);

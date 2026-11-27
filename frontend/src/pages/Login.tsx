@@ -43,7 +43,11 @@ const Login: React.FC = () => {
       toast.success(`Welcome, ${user.name || username}!`);
       navigate(user.role === "admin" ? "/admin-dashboard" : "/dashboard", { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.message || "Login failed. Please try again.");
+      setError(
+        err.response?.data?.message ||
+        err.message ||
+        "Unable to connect to server. Please try again in a moment."
+      );
     } finally {
       setLoading(false);
     }
@@ -138,7 +142,14 @@ const Login: React.FC = () => {
             )}
 
             <button type="submit" className="btn btn-primary w-100 py-3" disabled={loading}>
-              {loading ? <Loader2 size={20} className="animate-spin" /> : "Sign In Securely"}
+              {loading ? (
+                <div className="d-flex align-items-center justify-content-center gap-2">
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>Connecting...</span>
+                </div>
+              ) : (
+                "Sign In Securely"
+              )}
             </button>
 
             <p className="text-center mt-4" style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>

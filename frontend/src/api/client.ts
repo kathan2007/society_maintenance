@@ -5,16 +5,12 @@ import axios, {
   AxiosError,
 } from "axios";
 import { API_BASE_URL } from "../config/api";
-import toast from "react-hot-toast";
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 120000, // Generous 120s timeout so login and server requests have plenty of time
   headers: { "Content-Type": "application/json" },
 });
-
-let isWakingUp = false;
-let wakeUpToastId: string | undefined;
 
 // Request interceptor — attach JWT
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -25,37 +21,31 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-// Response interceptor — handle 401, server wake-up
+// Response interceptor — handle 401 & retry silently on initial network hiccup
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    if (wakeUpToastId) {
-      toast.dismiss(wakeUpToastId);
-      wakeUpToastId = undefined;
-      isWakingUp = false;
-    }
     return response;
   },
   async (error: AxiosError) => {
-    if (!error.response && !isWakingUp) {
-      // Network error — server may be sleeping (Render free tier)
-      isWakingUp = true;
-      wakeUpToastId = toast.loading("🌙 Waking up server... please wait", {
-        duration: 30000,
-      });
-      // Retry once after 5s
-      await new Promise((r) => setTimeout(r, 5000));
-      isWakingUp = false;
-      if (wakeUpToastId) {
-        toast.dismiss(wakeUpToastId);
-        wakeUpToastId = undefined;
+    const config = error.config as (InternalAxiosRequestConfig & { _retryCount?: number }) | undefined;
+
+    // Retry once silently if connection is establishing or timeout occurred
+    if (config && (!error.response || error.code === "ECONNABORTED")) {
+      config._retryCount = config._retryCount || 0;
+      if (config._retryCount < 2) {
+        config._retryCount += 1;
+        await new Promise((r) => setTimeout(r, 2000));
+        return apiClient.request(config);
       }
-      return apiClient.request(error.config!);
     }
 
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = "/";
+      // Only redirect if not already on the login or register page
+      if (window.location.pathname !== "/" && window.location.pathname !== "/register") {
+        window.location.href = "/";
+      }
     }
 
     return Promise.reject(error);
