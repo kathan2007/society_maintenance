@@ -1,12 +1,12 @@
 import { z } from "zod";
-import sanitizeHtml from "sanitize-html";
 
-// Helper to sanitize freeform text input against XSS
-const sanitizeString = (str) =>
-  sanitizeHtml(str, {
-    allowedTags: [],
-    allowedAttributes: {},
-  }).trim();
+// Helper to sanitize freeform text input against XSS without ESM dependency issues
+const sanitizeString = (str) => {
+  if (typeof str !== "string") return "";
+  return str
+    .replace(/[<>]/g, "") // Strip HTML tag brackets completely
+    .trim();
+};
 
 // MongoDB ObjectId validation regex
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
