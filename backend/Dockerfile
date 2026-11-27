@@ -2,7 +2,7 @@
 # Backend Dockerfile for Society Maintenance System
 # Multi-stage / lightweight Node.js Alpine runtime
 # ==============================================================================
-FROM node:20-alpine AS runner
+FROM node:26-alpine AS runner
 
 # Create app directory
 WORKDIR /usr/src/app
