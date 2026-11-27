@@ -1,244 +1,282 @@
-import API_BASE_URL from "../config/api";
 import React, { useEffect, useState } from "react";
-import axios from "axios";
-import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Users, Clock, CheckCircle, Plus, Shield, 
-  Calendar, Phone, Info, AlertCircle, X, Loader2, UserCheck
+import {
+  Users,
+  Clock,
+  CheckCircle,
+  Plus,
+  Calendar,
+  Phone,
+  UserCheck,
+  Shield,
+  Filter,
 } from "lucide-react";
+import apiClient from "../api/client";
+import { formatDate } from "../utils";
+import toast from "react-hot-toast";
 
-interface VisitorType {
+interface VisitorItem {
   _id: string;
   name: string;
   phone: string;
   expectedDate: string;
   purpose: string;
-  status: string;
+  status: "Expected" | "Entered" | "Exited";
+  createdAt: string;
 }
 
-const Visitor: React.FC = () => {
-  const [visitors, setVisitors] = useState<VisitorType[]>([]);
+const VisitorPage: React.FC = () => {
+  const [visitors, setVisitors] = useState<VisitorItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("All");
+
+  // Pre-approval form
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [date, setDate] = useState("");
-  const [purpose, setPurpose] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState<{type:string, text:string}>({type:"", text:""});
-
-  const token = localStorage.getItem("token");
-
-  useEffect(() => {
-    if (alert.text) {
-      const timer = setTimeout(() => setAlert({type:"", text:""}), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [alert]);
+  const [expectedDate, setExpectedDate] = useState("");
+  const [purpose, setPurpose] = useState("Guest / Social");
 
   const fetchVisitors = async () => {
-    if (!token) return;
-    try {
-      const res = await axios.get(`${API_BASE_URL}/visitor`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const sorted = res.data.sort((a: any, b: any) => 
-        new Date(a.expectedDate).getTime() - new Date(b.expectedDate).getTime()
-      );
-      setVisitors(sorted);
-    } catch (err) {
-      setAlert({ type: "danger", text: "Cloud sync failed." });
-    }
-  };
-
-  useEffect(() => { fetchVisitors(); }, []);
-
-  const addVisitor = async () => {
-    if (!name || !phone || !date) {
-      setAlert({ type: "warning", text: "Required fields missing." });
-      return;
-    }
-
     try {
       setLoading(true);
-      await axios.post(
-        `${API_BASE_URL}/visitor`,
-        { name, phone, expectedDate: date, purpose },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setName(""); setPhone(""); setDate(""); setPurpose("");
-      setAlert({ type: "success", text: "Visitor pre-approved successfully!" });
-      fetchVisitors();
+      const res = await apiClient.get<VisitorItem[]>("/visitor");
+      setVisitors(res.data || []);
     } catch (err) {
-      setAlert({ type: "danger", text: "Security protocol failed." });
+      toast.error("Failed to sync visitor logs");
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchVisitors();
+  }, []);
+
+  const handlePreApprove = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^[6-9]\d{9}$/.test(phone.trim())) {
+      toast.error("Please enter a valid 10-digit Indian mobile number");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiClient.post("/visitor", {
+        name: name.trim(),
+        phone: phone.trim(),
+        expectedDate,
+        purpose,
+      });
+      setName("");
+      setPhone("");
+      setExpectedDate("");
+      toast.success("Visitor pre-approved for gate entry");
+      fetchVisitors();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to log visitor");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filtered = visitors.filter(
+    (v) => filterStatus === "All" || v.status === filterStatus
+  );
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="page-container"
-    >
-      <div className="container-fluid px-md-4 py-4">
-        
-        {/* HEADER */}
-        <div className="mb-5 d-flex align-items-center gap-4">
-          <div className="icon-badge-blue">
-            <Shield size={32} />
-          </div>
-          <div>
-            <h1 className="fw-900 text-gradient mb-1">Security Registry</h1>
-            <p className="text-secondary small fw-800 text-uppercase letter-spacing-1">Digital Gate Clearance & Access Monitoring</p>
+    <div>
+      {/* ── Page Header ── */}
+      <div className="mb-5">
+        <h1
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: "var(--text-3xl)",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            marginBottom: "var(--space-1)",
+          }}
+        >
+          Visitor Gate Pre-Approval & Log
+        </h1>
+        <p style={{ fontSize: "var(--text-base)", color: "var(--text-secondary)", marginBottom: 0 }}>
+          Pre-authorize personal guests, delivery personnel, and service technicians for fast security gate entry.
+        </p>
+      </div>
+
+      <div className="row g-4">
+        {/* Pre-Approval Form */}
+        <div className="col-lg-5">
+          <div className="app-card">
+            <div className="d-flex align-items-center gap-2 mb-4">
+              <UserCheck size={20} style={{ color: "var(--accent)" }} />
+              <h5 style={{ margin: 0, fontWeight: 600 }}>Pre-Approve Visitor</h5>
+            </div>
+
+            <form onSubmit={handlePreApprove}>
+              <div className="mb-3">
+                <label className="form-label-v3">Guest / Visitor Name</label>
+                <input
+                  type="text"
+                  className="form-control-v3"
+                  placeholder="e.g. Ramesh Patel"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label-v3">Contact Mobile (10 digits)</label>
+                <input
+                  type="tel"
+                  className="form-control-v3"
+                  placeholder="9876543210"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label-v3">Expected Arrival Date & Time</label>
+                <input
+                  type="datetime-local"
+                  className="form-control-v3"
+                  value={expectedDate}
+                  onChange={(e) => setExpectedDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="form-label-v3">Visit Purpose</label>
+                <select
+                  className="form-select-v3"
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                >
+                  <option value="Guest / Social">Guest / Family</option>
+                  <option value="Courier / Parcel">Courier / Delivery</option>
+                  <option value="Home Maintenance">Home Maintenance / Repair</option>
+                  <option value="Other">Other Business</option>
+                </select>
+              </div>
+
+              <button type="submit" className="btn-gold w-100" disabled={submitting}>
+                <Plus size={16} />
+                <span>{submitting ? "Registering Pass..." : "Generate Gate Pass"}</span>
+              </button>
+            </form>
           </div>
         </div>
 
-        {/* FLOATING ALERTS */}
-        <AnimatePresence>
-          {alert.text && (
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className={`custom-alert alert-minimal-${alert.type === 'danger' ? 'danger' : 'blue'} mb-4`}>
-              <div className="d-flex align-items-center gap-3">
-                <Info size={20} className="text-primary" /> 
-                <span className="fw-800 extra-small text-uppercase letter-spacing-1">{alert.text}</span>
-              </div>
-              <X size={20} className="cursor-pointer opacity-50" onClick={() => setAlert({type:"", text:""})} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <div className="row g-5">
-          {/* FORM: PRE-AUTHORIZE */}
-          <div className="col-lg-4">
-            <div className="luxury-card p-4 h-100">
-              <h5 className="fw-900 text-gradient mb-4 d-flex align-items-center gap-3">
-                <Plus size={24} className="text-primary" /> Pre-Authorize Guest
-              </h5>
-
-              <form onSubmit={(e) => { e.preventDefault(); addVisitor(); }}>
-                <div className="mb-4">
-                  <label className="extra-small text-muted fw-800 text-uppercase mb-2 d-block letter-spacing-1">Full Identity</label>
-                  <div className="input-with-icon">
-                    <Users size={18} className="icon-left" />
-                    <input className="modern-input" placeholder="Guest Name" value={name} onChange={(e)=>setName(e.target.value)} required />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="extra-small text-muted fw-800 text-uppercase mb-2 d-block letter-spacing-1">Contact Line</label>
-                  <div className="input-with-icon">
-                    <Phone size={18} className="icon-left" />
-                    <input className="modern-input" placeholder="+91 XXXX XXXX" value={phone} onChange={(e)=>setPhone(e.target.value)} required />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="extra-small text-muted fw-800 text-uppercase mb-2 d-block letter-spacing-1">Estimated Arrival</label>
-                  <div className="input-with-icon">
-                    <Calendar size={18} className="icon-left" />
-                    <input type="datetime-local" className="modern-input" value={date} onChange={(e)=>setDate(e.target.value)} required />
-                  </div>
-                </div>
-
-                <div className="mb-5">
-                  <label className="extra-small text-muted fw-800 text-uppercase mb-2 d-block letter-spacing-1">Purpose of Access</label>
-                  <input className="modern-input" placeholder="e.g. Delivery, Guest, Social" value={purpose} onChange={(e)=>setPurpose(e.target.value)} />
-                </div>
-
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="btn-blue-solid w-100 py-3 d-flex align-items-center justify-content-center gap-3 fw-900 text-uppercase letter-spacing-1" 
-                  disabled={loading}
-                >
-                  {loading ? <Loader2 size={24} className="animate-spin" /> : <><UserCheck size={20}/> Issue Security Pass</>}
-                </motion.button>
-              </form>
-            </div>
-          </div>
-
-          {/* LIST: ACTIVE CLEARANCES */}
-          <div className="col-lg-8">
-            <div className="luxury-card p-0 overflow-hidden h-100">
-              <div className="p-4 border-bottom border-glass d-flex justify-content-between align-items-center">
-                <h5 className="fw-900 text-gradient mb-0 d-flex align-items-center gap-3">
-                  <Clock size={24} className="text-primary" /> Active Access Passes
-                </h5>
-                <span className="pill-blue">{visitors.length} Managed</span>
+        {/* Visitor History & Status */}
+        <div className="col-lg-7">
+          <div className="app-card">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+              <div className="d-flex align-items-center gap-2">
+                <Users size={20} style={{ color: "var(--primary)" }} />
+                <h5 style={{ margin: 0, fontWeight: 600 }}>Gate Entry Registry</h5>
               </div>
 
-              <div className="p-0">
-                <AnimatePresence mode="wait">
-                  {visitors.length === 0 ? (
-                    <div className="text-center py-5 opacity-40">
-                      <Users size={64} className="mb-4 text-primary" />
-                      <h5 className="fw-900">Sanctum Clear</h5>
-                      <p className="extra-small text-uppercase letter-spacing-1">No upcoming guest arrivals recorded</p>
-                    </div>
-                  ) : (
-                    <div className="table-responsive">
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th>Guest Profile</th>
-                            <th>Arrival Schedule</th>
-                            <th>Status & Control</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visitors.map((v, idx) => (
-                            <motion.tr 
-                              key={v._id}
-                              initial={{ opacity: 0, x: 20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: idx * 0.05 }}
-                            >
-                              <td>
-                                <div className="fw-900 text-secondary">{v.name}</div>
-                                <div className="extra-small text-muted fw-800 font-monospace" style={{fontSize: '0.65rem'}}>{v.phone}</div>
-                              </td>
-                              <td>
-                                <div className="small fw-900 text-primary mb-1">
-                                  {new Date(v.expectedDate).toLocaleDateString([], {month: 'long', day: 'numeric'})}
-                                </div>
-                                <div className="extra-small text-muted fw-800 text-uppercase letter-spacing-1">
-                                  {new Date(v.expectedDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                </div>
-                              </td>
-                              <td>
-                                <StatusBadge status={v.status} />
-                              </td>
-                            </motion.tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </AnimatePresence>
+              <div className="d-flex align-items-center gap-2">
+                <Filter size={14} style={{ color: "var(--text-muted)" }} />
+                {["All", "Expected", "Entered", "Exited"].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setFilterStatus(s)}
+                    style={{
+                      border: "none",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "4px 10px",
+                      fontSize: "var(--text-xs)",
+                      fontWeight: filterStatus === s ? 600 : 500,
+                      backgroundColor: filterStatus === s ? "var(--accent)" : "var(--bg-canvas)",
+                      color: filterStatus === s ? "var(--on-accent)" : "var(--text-secondary)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
             </div>
+
+            {loading ? (
+              <div className="py-5 text-center" style={{ color: "var(--text-muted)" }}>
+                <div className="spinner-border text-primary mb-2" role="status" />
+                <p style={{ fontSize: "var(--text-sm)" }}>Loading security log...</p>
+              </div>
+            ) : filtered.length > 0 ? (
+              <div className="table-responsive">
+                <table className="table-v3">
+                  <thead>
+                    <tr>
+                      <th>Visitor</th>
+                      <th>Expected Date</th>
+                      <th>Purpose</th>
+                      <th>Gate Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((v) => (
+                      <tr key={v._id}>
+                        <td>
+                          <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block" }}>
+                            {v.name}
+                          </span>
+                          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                            +91 {v.phone}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: "var(--text-xs)" }}>
+                          {formatDate(v.expectedDate)}
+                        </td>
+                        <td>
+                          <span style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
+                            {v.purpose}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge-v3 ${
+                              v.status === "Entered"
+                                ? "badge-success"
+                                : v.status === "Exited"
+                                ? "badge-info"
+                                : "badge-warning"
+                            }`}
+                          >
+                            {v.status === "Entered" ? (
+                              <CheckCircle size={12} />
+                            ) : (
+                              <Clock size={12} />
+                            )}
+                            <span>{v.status || "Expected"}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-5" style={{ color: "var(--text-muted)" }}>
+                <Users size={40} className="mx-auto mb-2 opacity-40" />
+                <h6 style={{ color: "var(--text-primary)", marginBottom: "4px" }}>
+                  No Visitor Logs Found
+                </h6>
+                <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>
+                  No pre-approved gate passes matching status '{filterStatus}'.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-const StatusBadge = ({status}:{status:string}) => {
-  const map:any = {
-    Expected: { color: "warning", label: "Scheduled", icon: <Clock size={14}/> },
-    Entered:  { color: "success", label: "On-Premise", icon: <Shield size={14}/> },
-    Exited:   { color: "secondary", label: "Checked Out", icon: <CheckCircle size={14}/> }
-  };
-  const current = map[status] || map["Expected"];
-
-  return(
-    <span className={`pill-${current.color} d-inline-flex align-items-center gap-2 extra-small fw-800 text-uppercase letter-spacing-1`}>
-      {current.icon} {current.label}
-    </span>
-  );
-};
-
-export default Visitor;
+export default VisitorPage;

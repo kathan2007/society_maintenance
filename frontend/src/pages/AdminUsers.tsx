@@ -2,7 +2,7 @@ import API_BASE_URL from "../config/api";
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { Users, Home, Phone, Mail, Calendar, ShieldCheck, Search, Filter, Loader2 } from "lucide-react";
+import { Users, Home, Phone, Calendar, ShieldCheck, Search, Loader2 } from "lucide-react";
 
 interface UserType {
   _id: string;
@@ -27,11 +27,11 @@ const AdminUsers: React.FC = () => {
     const fetchUsers = async () => {
       try {
         const res = await axios.get(`${API_BASE_URL}/admin/users`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         });
         setUsers(res.data);
       } catch (err) {
-        console.log(err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -39,137 +39,253 @@ const AdminUsers: React.FC = () => {
     fetchUsers();
   }, [token]);
 
-  const filteredUsers = users.filter(u => 
-    (u.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) || 
-    (u.flatNo?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-    (u.email?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-    (u.username?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-    (u.vehicleNumbers?.toLowerCase() || "").includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(
+    (u) =>
+      (u.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (u.flatNo?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (u.username?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (u.vehicleNumbers?.toLowerCase() || "").includes(searchTerm.toLowerCase())
   );
+
+  const initials = (name: string) =>
+    name
+      .split(" ")
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="page-container"
+      transition={{ duration: 0.4 }}
+      className="main-content"
+      style={{ padding: "var(--space-6)" }}
     >
-      <div className="container-fluid px-md-4 py-4">
-        
-        {/* --- HEADER SECTION --- */}
-        <div className="mb-5 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4">
-          <div className="d-flex align-items-center gap-4">
-            <div className="icon-badge-blue">
-              <Users size={32} />
-            </div>
-            <div>
-              <h1 className="fw-900 text-gradient mb-1">Resident Registry</h1>
-              <p className="text-secondary small fw-800 text-uppercase letter-spacing-1">Comprehensive Directory of Society Members</p>
-            </div>
+      {/* ── Page Header ── */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "var(--space-4)",
+          marginBottom: "var(--space-8)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "var(--radius-md)",
+              background: "var(--accent-light)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--accent-text)",
+            }}
+          >
+            <Users size={24} />
           </div>
-          
-          <div className="d-flex align-items-center gap-3">
-             <div className="search-box-light d-none d-lg-flex">
-                <Search size={18} className="text-primary" />
-                <input 
-                  type="text" 
-                  placeholder="Search by name, flat, vehicle..." 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ color: '#000000', fontWeight: '800' }}
-                />
-             </div>
-             <div className="stats-badge-blue">
-                <ShieldCheck size={20} />
-                <span>{filteredUsers.length} Active Profiles</span>
-             </div>
+          <div>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)", marginBottom: 2 }}>
+              Resident Registry
+            </h2>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", margin: 0 }}>
+              {users.length} registered members
+            </p>
           </div>
         </div>
 
-        {/* --- MAIN CONTENT CARD --- */}
-        <div className="luxury-card p-0 overflow-hidden">
-          <div className="table-responsive">
-            <table className="table mb-0 align-middle">
-              <thead>
+        {/* Search */}
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
+            background: "var(--bg-surface)",
+            border: "1.5px solid var(--border)",
+            borderRadius: "var(--radius-pill)",
+            padding: "var(--space-2) var(--space-4)",
+            minWidth: 260,
+          }}
+        >
+          <Search size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          <input
+            type="text"
+            placeholder="Search name, flat, vehicle…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              fontSize: "var(--text-sm)",
+              color: "var(--text-primary)",
+              width: "100%",
+            }}
+          />
+        </label>
+      </div>
+
+      {/* ── Count Chip ── */}
+      <div style={{ marginBottom: "var(--space-4)" }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
+            background: "var(--accent-light)",
+            color: "var(--accent-text)",
+            borderRadius: "var(--radius-pill)",
+            padding: "var(--space-1) var(--space-3)",
+            fontSize: "var(--text-xs)",
+            fontWeight: "var(--weight-semibold)",
+          }}
+        >
+          <ShieldCheck size={13} />
+          {filteredUsers.length} profiles shown
+        </span>
+      </div>
+
+      {/* ── Table ── */}
+      <div className="app-card" style={{ overflow: "hidden", padding: 0 }}>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table-v3" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ paddingLeft: "var(--space-5)" }}>Resident</th>
+                <th>Unit</th>
+                <th>Contact</th>
+                <th>Vehicles</th>
+                <th style={{ textAlign: "right", paddingRight: "var(--space-5)" }}>Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th className="ps-4 py-4 text-muted extra-small fw-800 text-uppercase letter-spacing-1">Resident Profile</th>
-                  <th className="py-4 text-muted extra-small fw-800 text-uppercase letter-spacing-1">Apartment Unit</th>
-                  <th className="py-4 text-muted extra-small fw-800 text-uppercase letter-spacing-1">Contact Information</th>
-                  <th className="py-4 text-muted extra-small fw-800 text-uppercase letter-spacing-1">Vehicle Information</th>
-                  <th className="text-end pe-4 py-4 text-muted extra-small fw-800 text-uppercase letter-spacing-1">Registration</th>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "var(--space-12)" }}>
+                    <Loader2 size={32} className="animate-spin" style={{ color: "var(--accent)" }} />
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="text-center py-5">
-                      <Loader2 size={48} className="animate-spin text-primary mx-auto" />
-                    </td>
-                  </tr>
-                ) : filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="text-center py-5">
-                      <div className="py-5 opacity-40">
-                        <Users size={64} className="text-primary mb-4 mx-auto" />
-                        <h5 className="fw-900">No Match Found</h5>
-                        <p className="extra-small text-uppercase letter-spacing-1">Try adjusting your search criteria</p>
+              ) : filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>
+                    <div
+                      style={{
+                        textAlign: "center",
+                        padding: "var(--space-12) var(--space-6)",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      <Users size={48} style={{ opacity: 0.3, marginBottom: "var(--space-3)" }} />
+                      <p style={{ fontWeight: "var(--weight-semibold)", maxWidth: "none" }}>
+                        No residents match your search
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u, index) => (
+                  <motion.tr
+                    key={u._id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    style={{ borderBottom: "1px solid var(--border)" }}
+                  >
+                    {/* Resident cell */}
+                    <td style={{ paddingLeft: "var(--space-5)", paddingTop: "var(--space-3)", paddingBottom: "var(--space-3)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: "var(--radius-pill)",
+                            background: "var(--bg-sidebar)",
+                            color: "var(--accent)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: "var(--weight-bold)",
+                            fontSize: "var(--text-xs)",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {initials(u.name)}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: "var(--weight-semibold)", fontSize: "var(--text-sm)", color: "var(--text-primary)" }}>
+                            {u.name}
+                          </div>
+                          <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                            @{u.username}
+                          </div>
+                        </div>
                       </div>
                     </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map((u, index) => (
-                    <motion.tr 
-                      key={u._id} 
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <td className="ps-4 py-3">
-                        <div className="d-flex align-items-center gap-3">
-                          <div className="user-avatar-blue">
-                            {u.name.charAt(0).toUpperCase()}
+
+                    {/* Unit */}
+                    <td>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "var(--space-1)",
+                          background: "var(--primary-light)",
+                          color: "var(--primary)",
+                          borderRadius: "var(--radius-pill)",
+                          padding: "var(--space-1) var(--space-3)",
+                          fontSize: "var(--text-xs)",
+                          fontWeight: "var(--weight-semibold)",
+                        }}
+                      >
+                        <Home size={12} />
+                        {u.flatNo || "—"}
+                      </span>
+                    </td>
+
+                    {/* Contact */}
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
+                        <Phone size={13} style={{ color: "var(--text-muted)" }} />
+                        {u.phoneNumber || "—"}
+                      </div>
+                    </td>
+
+                    {/* Vehicles */}
+                    <td>
+                      <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
+                        <span style={{ fontWeight: "var(--weight-semibold)" }}>
+                          {u.vehicleCount ?? 0}
+                        </span>{" "}
+                        vehicle{u.vehicleCount !== 1 ? "s" : ""}
+                        {u.vehicleNumbers && (
+                          <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 2 }}>
+                            {u.vehicleNumbers}
                           </div>
-                          <div>
-                            <div className="fw-900 text-secondary mb-0">{u.name}</div>
-                            <div className="extra-small text-primary fw-800 text-uppercase letter-spacing-1" style={{fontSize: '0.65rem'}}>Verified Resident</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="unit-pill">
-                          <Home size={14} className="text-primary" />
-                          <span>Unit {u.flatNo}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="d-flex flex-column gap-1">
-                          <div className="contact-item font-monospace">
-                            <Phone size={12} className="text-primary" /> {u.phoneNumber}
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="d-flex flex-column gap-1">
-                          <div className="contact-item font-monospace">
-                             <ShieldCheck size={12} className="text-primary" /> {u.vehicleCount} Vehicles
-                          </div>
-                          <div className="extra-small text-muted font-monospace ps-3">
-                             {u.vehicleNumbers || "No vehicles listed"}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="text-end pe-4">
-                        <div className="registration-date font-monospace">
-                          <Calendar size={14} className="text-primary" />
-                          <span>{new Date(u.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Joined */}
+                    <td style={{ textAlign: "right", paddingRight: "var(--space-5)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "var(--space-2)", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                        <Calendar size={13} />
+                        {new Date(u.createdAt).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </div>
+                    </td>
+                  </motion.tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </motion.div>

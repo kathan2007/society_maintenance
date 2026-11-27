@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Loader2 } from "lucide-react";
+import { Building2, Loader2, ArrowRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { authApi } from "../api/services";
 import { useAuth } from "../context/AuthContext";
@@ -19,7 +19,10 @@ const Login: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!username || !password) { setError("Please fill in all fields."); return; }
+    if (!username || !password) {
+      setError("Please fill in all credentials.");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -41,7 +44,7 @@ const Login: React.FC = () => {
         flatNo: flatNo,
       };
 
-      // Persist legacy keys for full compatibility across all resident & admin screens
+      // Persist legacy storage keys
       localStorage.setItem("token", token);
       localStorage.setItem("role", userRole);
       localStorage.setItem("name", userName);
@@ -49,7 +52,7 @@ const Login: React.FC = () => {
       localStorage.setItem("category", category);
 
       login(token, authUser);
-      toast.success(`Welcome, ${userName}!`);
+      toast.success(`Welcome back, ${userName}!`);
       navigate(userRole === "admin" ? "/admin-dashboard" : "/dashboard", { replace: true });
     } catch (err: any) {
       setError(
@@ -64,37 +67,64 @@ const Login: React.FC = () => {
 
   return (
     <div className="auth-page">
-      <div style={{ width: "100%", maxWidth: 480 }}>
+      <div style={{ width: "100%", maxWidth: 460 }}>
         <motion.div
-          initial={{ opacity: 0, y: 24 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
+          transition={{ duration: 0.35 }}
           className="auth-card"
         >
           {/* Branding */}
           <div className="auth-logo">
-            <Building2 size={48} color="var(--color-accent)" strokeWidth={1.5} />
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "var(--radius-sm)",
+                backgroundColor: "var(--accent)",
+                color: "var(--on-accent)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "var(--space-2)",
+              }}
+            >
+              <Building2 size={26} />
+            </div>
             <h1>Shree Hari Gift City</h1>
-            <p>Secure Member Access</p>
+            <p>Residential Society Portal</p>
           </div>
 
-          {/* Role switcher */}
-          <div className="d-flex p-1 mb-4" style={{ background: "rgba(255,255,255,0.05)", borderRadius: "var(--radius-sm)", border: "var(--glass-border)", gap: 4 }}>
+          {/* Role switcher segmented control */}
+          <div
+            className="d-flex p-1 mb-4"
+            style={{
+              backgroundColor: "var(--bg-canvas)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              gap: 4,
+            }}
+          >
             {["user", "admin"].map((r) => (
               <button
                 key={r}
                 type="button"
                 onClick={() => setRole(r)}
                 style={{
-                  flex: 1, padding: "8px 0", border: "none", borderRadius: "var(--radius-sm)",
-                  background: role === r ? "var(--color-accent)" : "transparent",
-                  color: role === r ? "var(--color-primary-dark)" : "var(--color-text-muted)",
-                  fontWeight: role === r ? 600 : 400,
-                  cursor: "pointer", transition: "all var(--transition-fast)",
+                  flex: 1,
+                  padding: "8px 0",
+                  border: "none",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: role === r ? "var(--accent)" : "transparent",
+                  color: role === r ? "var(--on-accent)" : "var(--text-secondary)",
+                  fontWeight: role === r ? 600 : 500,
+                  fontSize: "var(--text-sm)",
+                  cursor: "pointer",
+                  transition: "all var(--transition-fast)",
                   textTransform: "capitalize",
                 }}
               >
-                {r === "user" ? "Resident" : "Admin"}
+                {r === "user" ? "Resident" : "Administrator"}
               </button>
             ))}
           </div>
@@ -106,8 +136,16 @@ const Login: React.FC = () => {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="alert alert-danger mb-4"
-                  style={{ fontSize: "var(--text-sm)" }}
+                  className="mb-4"
+                  style={{
+                    backgroundColor: "var(--danger-bg)",
+                    color: "var(--danger)",
+                    border: "1px solid rgba(163, 34, 51, 0.2)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "10px 14px",
+                    fontSize: "var(--text-sm)",
+                    fontWeight: 500,
+                  }}
                 >
                   {error}
                 </motion.div>
@@ -115,13 +153,13 @@ const Login: React.FC = () => {
             </AnimatePresence>
 
             <div className="mb-3">
-              <label className="form-label" style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)", fontWeight: 500 }}>
+              <label className="form-label-v3">
                 {role === "admin" ? "Admin Username" : "Resident Username"}
               </label>
               <input
                 type="text"
-                className="form-control"
-                placeholder={role === "admin" ? "admin" : "e.g. johndoe_a101"}
+                className="form-control-v3"
+                placeholder={role === "admin" ? "admin" : "e.g. kathan"}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
@@ -130,13 +168,11 @@ const Login: React.FC = () => {
             </div>
 
             <div className="mb-4">
-              <label className="form-label" style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)", fontWeight: 500 }}>
-                Password
-              </label>
+              <label className="form-label-v3">Security Password</label>
               <input
                 type="password"
-                className="form-control"
-                placeholder="••••••••"
+                className="form-control-v3"
+                placeholder="••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
@@ -145,32 +181,43 @@ const Login: React.FC = () => {
             </div>
 
             {role === "admin" && import.meta.env.DEV && (
-              <div className="alert alert-info mb-4" style={{ fontSize: "var(--text-xs)" }}>
-                Default dev credentials: <code>admin</code> / <code>admin</code>
+              <div
+                className="mb-4"
+                style={{
+                  backgroundColor: "var(--bg-canvas)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "8px 12px",
+                  fontSize: "var(--text-xs)",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                Development Credentials: <code>admin</code> / <code>admin</code>
               </div>
             )}
 
-            <button type="submit" className="btn btn-primary w-100 py-3" disabled={loading}>
+            <button type="submit" className="btn-gold w-100" disabled={loading} style={{ minHeight: "44px" }}>
               {loading ? (
                 <div className="d-flex align-items-center justify-content-center gap-2">
-                  <Loader2 size={20} className="animate-spin" />
-                  <span>Connecting...</span>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Authenticating...</span>
                 </div>
               ) : (
-                "Sign In Securely"
+                <div className="d-flex align-items-center justify-content-center gap-2">
+                  <span>Sign In to Portal</span>
+                  <ArrowRight size={16} />
+                </div>
               )}
             </button>
 
-            <p className="text-center mt-4" style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>
+            <p className="text-center mt-4 mb-0" style={{ color: "var(--text-secondary)", fontSize: "var(--text-sm)" }}>
               Don't have an account?{" "}
-              <Link to="/register" style={{ color: "var(--color-accent)" }}>Join Society</Link>
+              <Link to="/register" style={{ color: "var(--primary)", fontWeight: 600 }}>
+                Join Society
+              </Link>
             </p>
           </form>
         </motion.div>
-
-        <p className="text-center mt-4" style={{ color: "rgba(255,255,255,0.3)", fontSize: "var(--text-xs)" }}>
-          © 2026 Shree Hari Gift City Portal
-        </p>
       </div>
     </div>
   );

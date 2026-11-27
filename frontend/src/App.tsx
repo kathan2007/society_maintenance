@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { AuthProvider } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -36,10 +37,10 @@ const PageLoader: React.FC = () => (
 
 /* ── Layout with Navbar + Footer ── */
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="app-layout min-vh-100 d-flex flex-column">
+  <div className="app-shell">
     <Navbar />
-    <main className="flex-grow-1">
-      <div className="container-fluid px-0">{children}</div>
+    <main id="main" className="main-content">
+      <div className="container-limit">{children}</div>
     </main>
     <Footer />
   </div>
@@ -113,13 +114,15 @@ const AnimatedRoutes: React.FC = () => {
 
 /* ── Root App ── */
 const App: React.FC = () => (
-  <AuthProvider>
-    <BrowserRouter>
-      <Suspense fallback={<PageLoader />}>
-        <AnimatedRoutes />
-      </Suspense>
-    </BrowserRouter>
-  </AuthProvider>
+  <ThemeProvider>
+    <AuthProvider>
+      <BrowserRouter>
+        <Suspense fallback={<PageLoader />}>
+          <AnimatedRoutes />
+        </Suspense>
+      </BrowserRouter>
+    </AuthProvider>
+  </ThemeProvider>
 );
 
 export default App;

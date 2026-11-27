@@ -1,13 +1,22 @@
-import API_BASE_URL from "../config/api";
 import React, { useEffect, useState } from "react";
-import axios from "axios";
-import { motion } from "framer-motion";
-import { 
-  Users, Wallet, AlertCircle, Bell, CheckCircle, 
-  Clock, Shield, Zap, ArrowUpRight, LayoutDashboard,
-  BarChart3, PieChart, Activity, MessageSquare
-} from "lucide-react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import {
+  Wallet,
+  AlertCircle,
+  Bell,
+  Users,
+  CreditCard,
+  MessageSquare,
+  ArrowRight,
+  TrendingUp,
+  FileText,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  PieChart as PieIcon,
+  BarChart2,
+} from "lucide-react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -16,11 +25,13 @@ import {
   Title,
   Tooltip,
   Legend,
-  ArcElement
-} from 'chart.js';
-import { Bar, Pie } from 'react-chartjs-2';
+  ArcElement,
+} from "chart.js";
+import { Bar, Pie } from "react-chartjs-2";
+import apiClient from "../api/client";
+import { formatCurrency, formatDate } from "../utils";
+import type { Maintenance, Complaint, Notice, Expense } from "../types";
 
-// Register ChartJS
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -31,368 +42,569 @@ ChartJS.register(
   ArcElement
 );
 
-interface StatsType {
-  complaints: number;
-  maintenance: number;
-  pendingAmount: number;
-  notices: number;
-}
-
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<StatsType>({
-    complaints: 0,
-    maintenance: 0,
-    pendingAmount: 0,
-    notices: 0
-  });
-  
-  const [financials, setFinancials] = useState({
-    income: 0,
-    expense: 0,
-    catLabels: [] as string[],
-    catValues: [] as number[]
-  });
-
-  const [publicComplaints, setPublicComplaints] = useState<any[]>([]);
-
   const [loading, setLoading] = useState(true);
-  const role = localStorage.getItem("role");
-  const userName = localStorage.getItem("name");
+  const [bills, setBills] = useState<Maintenance[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+
+  const userName = localStorage.getItem("name") || "Resident";
+  const userFlatNo = localStorage.getItem("flatNo") || "A-101";
 
   useEffect(() => {
-    const fetchAllData = async () => {
+    const loadDashboardData = async () => {
       try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
-        const headers = { Authorization: `Bearer ${token}` };
-
-        const [complaints, maintenance, notices, expenses] = await Promise.all([
-          axios.get(`${API_BASE_URL}/complaint`, { headers }),
-          axios.get(`${API_BASE_URL}/maintenance`, { headers }),
-          axios.get(`${API_BASE_URL}/notice`),
-          axios.get(`${API_BASE_URL}/expense`, { headers })
+        const [billsRes, complaintsRes, noticesRes, expensesRes] = await Promise.allSettled([
+          apiClient.get<Maintenance[]>("/maintenance"),
+          apiClient.get<Complaint[]>("/complaint"),
+          apiClient.get<Notice[]>("/notice"),
+          apiClient.get<Expense[]>("/expense"),
         ]);
 
-        // Basic Stats
-        const pendingAmount = maintenance.data
-          .filter((m: any) => m.status === 'Pending')
-          .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0);
-
-        setStats({
-          complaints: complaints.data.length || 0,
-          maintenance: maintenance.data.length || 0,
-          pendingAmount: pendingAmount,
-          notices: notices.data.length || 0
-        });
-
-        // Financials for Charts
-        const totalIncome = maintenance.data
-          .filter((m: any) => m.status === 'Paid')
-          .reduce((acc: number, m: any) => acc + (Number(m.amount) || 0), 0);
-        
-        const totalExpense = expenses.data.reduce((acc: number, e: any) => acc + (Number(e.amount) || 0), 0);
-
-        const catMap: {[key: string]: number} = {};
-        expenses.data.forEach((e: any) => {
-          catMap[e.category] = (catMap[e.category] || 0) + Number(e.amount);
-        });
-
-        setFinancials({
-          income: totalIncome,
-          expense: totalExpense,
-          catLabels: Object.keys(catMap),
-          catValues: Object.values(catMap)
-        });
-
-        // Store latest 3 for the dashboard feed
-        setPublicComplaints(complaints.data.slice(0, 3));
-
+        if (billsRes.status === "fulfilled") setBills(billsRes.value.data || []);
+        if (complaintsRes.status === "fulfilled") setComplaints(complaintsRes.value.data || []);
+        if (noticesRes.status === "fulfilled") setNotices(noticesRes.value.data || []);
+        if (expensesRes.status === "fulfilled") setExpenses(expensesRes.value.data || []);
       } catch (err) {
-        console.error("Dashboard Sync Error", err);
+        // handled silently
       } finally {
         setLoading(false);
       }
     };
-    fetchAllData();
+
+    loadDashboardData();
   }, []);
 
+  // Compute Real Metrics
+  const pendingBills = bills.filter((b) => b.status === "Pending");
+  const pendingAmount = pendingBills.reduce((sum, b) => sum + (b.totalAmount || b.amount || 0), 0);
+  const activeComplaints = complaints.filter(
+    (c) => c.status === "Open" || c.status === "In Progress"
+  );
+  const recentBills = bills.slice(0, 4);
+  const recentNotices = notices.slice(0, 3);
+  const recentComplaints = complaints.slice(0, 3);
+
+  // Group monthly expenses for Chart
+  const expenseCatMap: Record<string, number> = {};
+  expenses.forEach((e) => {
+    const cat = e.category || "General";
+    expenseCatMap[cat] = (expenseCatMap[cat] || 0) + Number(e.amount || 0);
+  });
+  const expenseCategories = Object.keys(expenseCatMap);
+  const expenseValues = Object.values(expenseCatMap);
+
+  // Maintenance Inflow vs Outflow
+  const totalPaidInflow = bills
+    .filter((b) => b.status === "Paid")
+    .reduce((sum, b) => sum + (b.totalAmount || b.amount || 0), 0);
+  const totalExpenseOutflow = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
   const barChartData = {
-    labels: ['Society Treasury'],
+    labels: ["Society Treasury"],
     datasets: [
       {
-        label: 'Maintenance Inflow',
-        data: [financials.income],
-        backgroundColor: '#2563eb',
+        label: "Maintenance Collections",
+        data: [totalPaidInflow],
+        backgroundColor: "#1F4FD8",
         borderRadius: 8,
+        barPercentage: 0.5,
       },
       {
-        label: 'Operational Outflow',
-        data: [financials.expense],
-        backgroundColor: '#f43f5e',
+        label: "Operational Expenses",
+        data: [totalExpenseOutflow],
+        backgroundColor: "#C9A24B",
         borderRadius: 8,
-      }
-    ]
+        barPercentage: 0.5,
+      },
+    ],
   };
 
   const pieChartData = {
-    labels: financials.catLabels,
-    datasets: [{
-      data: financials.catValues,
-      backgroundColor: ['#2563eb', '#6366f1', '#f59e0b', '#10b981', '#f43f5e'],
-      borderWidth: 0
-    }]
+    labels: expenseCategories,
+    datasets: [
+      {
+        data: expenseValues,
+        backgroundColor: ["#1F4FD8", "#C9A24B", "#14623A", "#7A4B00", "#A32233", "#4A5470"],
+        borderWidth: 0,
+      },
+    ],
   };
 
+  const currentDateStr = new Date().toLocaleDateString("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="page-container"
-    >
-      <div className="container-fluid px-md-4 py-4">
-        
-        {/* --- DYNAMIC HEADER --- */}
-        <div className="mb-5 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4">
-          <div>
-            <div className="d-flex align-items-center gap-2 text-primary fw-900 text-uppercase small mb-2 letter-spacing-1">
-              <Zap size={18} />
-              Resident Identity Verified
-            </div>
-            <h1 className="fw-900 text-black mb-1 display-5">Welcome, {userName || 'Kathan'}</h1>
-            <p className="text-secondary small mb-0 fw-800 uppercase letter-spacing-1">Live Transparency Portal • Shri Hari Gift City</p>
+    <div>
+      {/* ── Page Header: Display Heading Playfair Display >= 24px ── */}
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-5">
+        <div>
+          <span
+            style={{
+              fontSize: "var(--text-sm)",
+              color: "var(--text-secondary)",
+              fontWeight: 500,
+              display: "block",
+              marginBottom: "var(--space-1)",
+            }}
+          >
+            {currentDateStr}
+          </span>
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "var(--text-4xl)",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              lineHeight: 1.2,
+              marginBottom: "var(--space-1)",
+            }}
+          >
+            Welcome, {userName}
+          </h1>
+          <p style={{ fontSize: "var(--text-base)", color: "var(--text-secondary)", marginBottom: 0 }}>
+            Flat {userFlatNo} • Shree Hari Gift City Residential Portal
+          </p>
+        </div>
+
+        {/* Quick Action Button */}
+        {pendingAmount > 0 ? (
+          <Link
+            to="/maintenance"
+            className="btn-gold"
+            style={{ minWidth: "160px", textDecoration: "none" }}
+          >
+            <CreditCard size={18} />
+            <span>Pay Dues ({formatCurrency(pendingAmount)})</span>
+          </Link>
+        ) : (
+          <div
+            className="d-flex align-items-center gap-2"
+            style={{
+              padding: "10px 16px",
+              backgroundColor: "var(--success-bg)",
+              color: "var(--success)",
+              borderRadius: "var(--radius-md)",
+              fontWeight: 600,
+              fontSize: "var(--text-sm)",
+            }}
+          >
+            <CheckCircle2 size={18} />
+            <span>All Dues Cleared</span>
           </div>
-          
-          <div className="stats-badge-blue py-3 px-4 shadow-sm bg-white border border-2 border-primary border-opacity-10 rounded-4">
-            <div className="d-flex align-items-center gap-3">
-              <div className="pulse-indicator-green"></div>
-              <div>
-                <div className="extra-small text-muted fw-900 text-uppercase letter-spacing-1">SECURITY STATUS</div>
-                <div className="small fw-900 text-primary uppercase">v2.5.0 STABLE SECURE</div>
+        )}
+      </div>
+
+      {/* ── 4 Real Stat Cards (Section 3.1) ── */}
+      <div className="row g-4 mb-5">
+        {/* Stat 1: Pending Dues */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Pending Dues</span>
+              <Wallet size={20} style={{ color: pendingAmount > 0 ? "var(--danger)" : "var(--success)" }} />
+            </div>
+            <div className="stat-card-value tabular-nums">
+              {formatCurrency(pendingAmount)}
+            </div>
+            <p className="stat-card-subtext">
+              {pendingBills.length} unpaid {pendingBills.length === 1 ? "bill" : "bills"}
+            </p>
+          </div>
+        </div>
+
+        {/* Stat 2: Active Complaints */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Active Complaints</span>
+              <AlertCircle size={20} style={{ color: "var(--warning)" }} />
+            </div>
+            <div className="stat-card-value tabular-nums">
+              {activeComplaints.length}
+            </div>
+            <p className="stat-card-subtext">
+              {complaints.length - activeComplaints.length} resolved to date
+            </p>
+          </div>
+        </div>
+
+        {/* Stat 3: Society Bulletins */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Society Bulletins</span>
+              <Bell size={20} style={{ color: "var(--accent)" }} />
+            </div>
+            <div className="stat-card-value tabular-nums">
+              {notices.length}
+            </div>
+            <p className="stat-card-subtext">Active official notices</p>
+          </div>
+        </div>
+
+        {/* Stat 4: Next Due Date */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Next Due Date</span>
+              <Calendar size={20} style={{ color: "var(--primary)" }} />
+            </div>
+            <div className="stat-card-value" style={{ fontSize: "var(--text-2xl)" }}>
+              {pendingBills[0] ? pendingBills[0].month : "Current Month"}
+            </div>
+            <p className="stat-card-subtext">Billing cycle monthly 1st</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Financial Transparency & Expense Breakdown ── */}
+      <div className="row g-4 mb-5">
+        {/* Treasury Chart */}
+        <div className="col-lg-8">
+          <div className="app-card h-100">
+            <div className="d-flex align-items-center justify-content-between mb-4">
+              <div className="d-flex align-items-center gap-2">
+                <BarChart2 size={20} style={{ color: "var(--primary)" }} />
+                <h5 style={{ margin: 0, fontWeight: 600 }}>Society Treasury Transparency</h5>
               </div>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                Audited Collections & Outflow
+              </span>
+            </div>
+            <div style={{ height: "260px" }}>
+              <Bar
+                data={barChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      display: true,
+                      position: "bottom",
+                      labels: {
+                        font: { family: "Inter", size: 13, weight: "bold" },
+                        color: "#4A5470",
+                      },
+                    },
+                    tooltip: {
+                      callbacks: {
+                        label: (ctx) => ` ₹ ${(ctx.parsed.y || 0).toLocaleString("en-IN")}`,
+                      },
+                    },
+                  },
+                  scales: {
+                    y: {
+                      ticks: {
+                        font: { size: 12 },
+                        callback: (v) => `₹ ${Number(v).toLocaleString("en-IN")}`,
+                      },
+                      grid: { color: "rgba(224, 218, 203, 0.4)" },
+                    },
+                    x: {
+                      ticks: { font: { size: 13, weight: "bold" } },
+                      grid: { display: false },
+                    },
+                  },
+                }}
+              />
             </div>
           </div>
         </div>
 
-        {/* --- STAT CARDS --- */}
-        <div className="row g-4 mb-5">
-          <StatCard
-            title="Active Complaints"
-            value={stats.complaints}
-            icon={<AlertCircle size={22} />}
-            type="blue"
-            delay={0.1}
-          />
-          <StatCard
-            title="My Pending Dues"
-            value={`₹${stats.pendingAmount}`}
-            icon={<Wallet size={22} />}
-            type="rose"
-            delay={0.2}
-          />
-          <StatCard
-            title="Society Bulletins"
-            value={stats.notices}
-            icon={<Bell size={22} />}
-            type="amber"
-            delay={0.3}
-          />
-          <StatCard
-            title="Security Audit"
-            value="A+"
-            icon={<Shield size={22} />}
-            type="green"
-            delay={0.4}
-          />
-        </div>
-
-        {/* --- FINANCIAL TRANSPARENCY CHARTS --- */}
-        <div className="row g-4 mb-5">
-           <div className="col-lg-8">
-              <div className="luxury-card p-4 bg-white shadow-sm border-0 h-100">
-                <div className="d-flex justify-content-between align-items-center mb-4">
-                  <h5 className="fw-900 text-black text-uppercase letter-spacing-1 m-0 d-flex align-items-center gap-2">
-                    <BarChart3 size={20} className="text-primary" />
-                    Society Financial Transparency
-                  </h5>
-                  <span className="extra-small fw-900 text-muted uppercase">Audit Snapshot</span>
+        {/* Expense Distribution */}
+        <div className="col-lg-4">
+          <div className="app-card h-100 d-flex flex-column">
+            <div className="d-flex align-items-center gap-2 mb-4">
+              <PieIcon size={20} style={{ color: "var(--accent)" }} />
+              <h5 style={{ margin: 0, fontWeight: 600 }}>Expense Allocation</h5>
+            </div>
+            <div className="flex-grow-1 d-flex align-items-center justify-content-center" style={{ minHeight: "220px" }}>
+              {expenseCategories.length > 0 ? (
+                <div style={{ width: "100%", height: "240px" }}>
+                  <Pie
+                    data={pieChartData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          position: "bottom",
+                          labels: { font: { family: "Inter", size: 13 }, color: "#4A5470" },
+                        },
+                      },
+                    }}
+                  />
                 </div>
-                <div style={{height: '300px'}}>
-                   <Bar 
-                      data={barChartData} 
-                      options={{ 
-                        responsive: true, 
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: true, labels: { font: { weight: 'bold' } } } }
-                      }} 
-                   />
+              ) : (
+                <div className="text-center py-4" style={{ color: "var(--text-muted)" }}>
+                  <TrendingUp size={36} className="mx-auto mb-2 opacity-50" />
+                  <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>
+                    No recorded society expenditures this period.
+                  </p>
                 </div>
-              </div>
-           </div>
-           <div className="col-lg-4">
-              <div className="luxury-card p-4 bg-white shadow-sm border-0 h-100">
-                <h5 className="fw-900 text-black text-uppercase letter-spacing-1 mb-4 d-flex align-items-center gap-2">
-                  <PieChart size={20} className="text-primary" />
-                  Expense Distribution
-                </h5>
-                <div style={{height: '300px'}} className="d-flex align-items-center justify-content-center">
-                   {financials.catLabels.length > 0 ? (
-                      <Pie 
-                        data={pieChartData}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: { legend: { position: 'bottom', labels: { font: { weight: 'bold', size: 10 } } } }
-                        }}
-                      />
-                   ) : (
-                      <div className="text-center opacity-40">
-                         <Activity size={40} className="mx-auto mb-2" />
-                         <p className="extra-small fw-900 uppercase">Awaiting Data</p>
-                      </div>
-                   )}
-                </div>
-              </div>
-           </div>
-        </div>
-
-        <div className="row g-4">
-          <div className="col-lg-8">
-            <div className="luxury-card h-100 bg-white shadow-sm border-0 p-5">
-              <div className="d-flex justify-content-between align-items-center mb-5">
-                <h5 className="fw-900 text-black mb-0 d-flex align-items-center gap-3 uppercase letter-spacing-1 font-large">
-                  <LayoutDashboard size={28} className="text-primary" />
-                  Resident Controls
-                </h5>
-                <Link to="/maintenance" className="btn btn-outline-primary py-2 px-4 fw-900 text-uppercase extra-small letter-spacing-1 rounded-3">Fast Pay</Link>
-              </div>
-              
-              <div className="row g-4">
-                <ActionLink to="/maintenance" label="Payments" sub="Bills & Ledger" icon={<Wallet size={22}/>} color="indigo" />
-                <ActionLink to="/complaint" label="Support" sub="Resolution Center" icon={<AlertCircle size={22}/>} color="rose" />
-                <ActionLink to="/notice" label="Bulletin" sub="Announcements" icon={<Bell size={22}/>} color="amber" />
-                <ActionLink to="/visitor" label="Visitor Desk" sub="Guest Entry" icon={<Users size={22}/>} color="emerald" />
-              </div>
+              )}
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="col-lg-4">
-            <div className="d-flex flex-column gap-4 h-100">
-               <div className="luxury-card p-4 bg-white shadow-sm border-0">
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h6 className="fw-900 text-black text-uppercase letter-spacing-2 m-0 d-flex align-items-center gap-2">
-                       <MessageSquare size={18} className="text-primary" />
-                       Society Issues Feed
-                    </h6>
-                    <Link to="/complaint" className="extra-small fw-900 text-primary uppercase text-decoration-none">View All</Link>
+      {/* ── Recent Bills & Notices Section (Equal Height 12-col Grid) ── */}
+      <div className="row g-4 mb-5">
+        {/* Recent Bills */}
+        <div className="col-lg-6">
+          <div className="app-card h-100 d-flex flex-column">
+            <div className="d-flex align-items-center justify-content-between mb-4">
+              <div className="d-flex align-items-center gap-2">
+                <FileText size={20} style={{ color: "var(--primary)" }} />
+                <h5 style={{ margin: 0, fontWeight: 600 }}>Recent Maintenance Bills</h5>
+              </div>
+              <Link to="/maintenance" style={{ fontSize: "var(--text-sm)" }}>
+                View All
+              </Link>
+            </div>
+
+            {recentBills.length > 0 ? (
+              <div className="table-responsive flex-grow-1">
+                <table className="table-v3">
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentBills.map((b) => (
+                      <tr key={b._id}>
+                        <td style={{ fontWeight: 600 }}>{b.month}</td>
+                        <td className="tabular-nums">{formatCurrency(b.totalAmount || b.amount)}</td>
+                        <td>
+                          <span className={`badge-v3 ${b.status === "Paid" ? "badge-paid" : "badge-pending"}`}>
+                            {b.status === "Paid" ? <CheckCircle2 size={13} /> : <Clock size={13} />}
+                            <span>{b.status}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-5 my-auto" style={{ color: "var(--text-muted)" }}>
+                <CheckCircle2 size={32} className="mx-auto mb-2 text-success opacity-75" />
+                <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>No maintenance bills found for this account.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Latest Bulletins & Notices */}
+        <div className="col-lg-6">
+          <div className="app-card h-100 d-flex flex-column">
+            <div className="d-flex align-items-center justify-content-between mb-4">
+              <div className="d-flex align-items-center gap-2">
+                <Bell size={20} style={{ color: "var(--accent)" }} />
+                <h5 style={{ margin: 0, fontWeight: 600 }}>Latest Society Bulletins</h5>
+              </div>
+              <Link to="/notice" style={{ fontSize: "var(--text-sm)" }}>
+                All Notices
+              </Link>
+            </div>
+
+            {recentNotices.length > 0 ? (
+              <div className="d-flex flex-column gap-3 flex-grow-1">
+                {recentNotices.map((n) => (
+                  <div
+                    key={n._id}
+                    style={{
+                      padding: "var(--space-3) var(--space-4)",
+                      backgroundColor: "var(--bg-canvas)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-md)",
+                    }}
+                  >
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", color: "var(--text-primary)" }}>
+                        {n.title}
+                      </span>
+                      <span className={`badge-v3 ${n.priority === "high" ? "badge-danger" : "badge-info"}`}>
+                        {n.priority}
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "var(--text-xs)",
+                        color: "var(--text-secondary)",
+                        margin: 0,
+                        lineHeight: 1.5,
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {n.content}
+                    </p>
                   </div>
-                  <div className="d-flex flex-column gap-3">
-                    {publicComplaints.length === 0 ? (
-                      <p className="extra-small text-muted fw-800 uppercase text-center py-3">No active reports</p>
-                    ) : (
-                      publicComplaints.map((c: any) => (
-                        <div key={c._id} className="p-3 bg-light rounded-3 border-start border-4" style={{borderColor: c.status === 'Resolved' ? '#10b981' : '#f59e0b'}}>
-                          <div className="d-flex justify-content-between mb-1">
-                             <div className="fw-900 text-black extra-small uppercase">{c.userId?.name || 'Member'} • {c.userId?.flatNo || 'N/A'}</div>
-                             <div className={`fw-900 uppercase`} style={{fontSize: '0.6rem', color: c.status === 'Resolved' ? '#10b981' : '#f59e0b'}}>{c.status}</div>
-                          </div>
-                          <p className="extra-small text-secondary mb-0 text-truncate" style={{fontSize: '0.65rem'}}>{c.message}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-               </div>
-
-               <div className="luxury-card flex-grow-1 p-4 bg-white shadow-sm border-0">
-                 <h6 className="fw-900 text-black text-uppercase mb-4 letter-spacing-2">Security Monitoring</h6>
-                 <div className="d-flex flex-column gap-3">
-                   <MonitoringItem 
-                     icon={<Shield size={18} />}
-                     title="Firewall Verified"
-                     desc="Encryption active"
-                     status="Active"
-                     color="blue"
-                   />
-                   <MonitoringItem 
-                     icon={<Clock size={18} />}
-                     title="Gate Control"
-                     desc="Live feed active"
-                     status="Live"
-                     color="emerald"
-                   />
-                </div>
-               </div>
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-5 my-auto" style={{ color: "var(--text-muted)" }}>
+                <Bell size={32} className="mx-auto mb-2 opacity-50" />
+                <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>No active notices at this time.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
-    </motion.div>
-  );
-};
 
-// --- SUB COMPONENTS ---
-
-const StatCard = ({ title, value, icon, type, delay }: any) => {
-  const colorMap = {
-     blue: '#2563eb',
-     rose: '#f43f5e',
-     amber: '#f59e0b',
-     green: '#10b981'
-  };
-  
-  return (
-  <div className="col-md-6 col-lg-3">
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.4 }}
-      className={`bg-white p-4 h-100 position-relative shadow-sm rounded-4 border-bottom border-4`}
-      style={{borderColor: (colorMap as any)[type] || '#000'}}
-    >
-      <div className={`mb-3 d-flex align-items-center justify-content-center rounded-3`} style={{width: '48px', height: '48px', background: `rgba(${(colorMap as any)[type]}, 0.1)`, color: (colorMap as any)[type] }}>
-        {icon}
-      </div>
-      <h2 className="fw-900 mb-1 fs-3 text-black letter-spacing-1">{value}</h2>
-      <p className="text-muted extra-small fw-900 text-uppercase letter-spacing-1 mb-0">{title}</p>
-    </motion.div>
-  </div>
-  );
-};
-
-const ActionLink = ({ to, label, sub, icon, color }: any) => (
-  <div className="col-md-6">
-    <Link to={to} className="text-decoration-none">
-      <motion.div 
-        whileHover={{ y: -5, scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        className="bg-light p-4 rounded-4 h-100 d-flex align-items-center border border-2 border-transparent transition-all"
-        style={{borderStyle: 'solid'}}
-      >
-        <div className={`icon-circle-bg d-flex align-items-center justify-content-center rounded-3`} style={{width: '48px', height: '48px', background: '#ffffff', color: '#2563eb'}}>
-          {icon}
+      {/* ── Resident Action Shortcuts (Grid aligned, equal heights) ── */}
+      <h5 style={{ fontWeight: 600, marginBottom: "var(--space-4)" }}>Resident Services & Quick Actions</h5>
+      <div className="row g-4">
+        <div className="col-md-3 col-6">
+          <Link
+            to="/maintenance"
+            className="app-card text-decoration-none d-flex flex-column justify-content-between h-100"
+            style={{ color: "inherit", padding: "var(--space-5)" }}
+          >
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--accent-light)",
+                  color: "var(--accent-text)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <CreditCard size={20} />
+              </div>
+              <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: "var(--text-base)", color: "var(--text-primary)", display: "block" }}>
+                Pay Maintenance
+              </span>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                UPI QR & Receipts
+              </span>
+            </div>
+          </Link>
         </div>
-        <div className="ms-3">
-          <div className="fw-900 text-black small mb-0 text-uppercase letter-spacing-1">{label}</div>
-          <div className="extra-small text-muted fw-800 uppercase letter-spacing-1">{sub}</div>
-        </div>
-      </motion.div>
-    </Link>
-  </div>
-);
 
-const MonitoringItem = ({ icon, title, desc, status, color }: any) => (
-  <div className="monitoring-item d-flex align-items-center justify-content-between p-3 bg-light rounded-4">
-    <div className="d-flex align-items-center gap-3">
-      <div className={`icon-box-sm d-flex align-items-center justify-content-center rounded-circle`} style={{width: '32px', height: '32px', background: '#ffffff', color: '#2563eb'}}>
-        {icon}
-      </div>
-      <div>
-        <div className="fw-900 text-black extra-small mb-0 text-uppercase letter-spacing-1">{title}</div>
-        <div className="text-muted fw-800 uppercase" style={{fontSize: '0.6rem'}}>{desc}</div>
+        <div className="col-md-3 col-6">
+          <Link
+            to="/complaint"
+            className="app-card text-decoration-none d-flex flex-column justify-content-between h-100"
+            style={{ color: "inherit", padding: "var(--space-5)" }}
+          >
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--primary-light)",
+                  color: "var(--primary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <MessageSquare size={20} />
+              </div>
+              <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: "var(--text-base)", color: "var(--text-primary)", display: "block" }}>
+                Raise Complaint
+              </span>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                Ticket & Tracking
+              </span>
+            </div>
+          </Link>
+        </div>
+
+        <div className="col-md-3 col-6">
+          <Link
+            to="/visitor"
+            className="app-card text-decoration-none d-flex flex-column justify-content-between h-100"
+            style={{ color: "inherit", padding: "var(--space-5)" }}
+          >
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--success-bg)",
+                  color: "var(--success)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Users size={20} />
+              </div>
+              <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: "var(--text-base)", color: "var(--text-primary)", display: "block" }}>
+                Pre-approve Visitor
+              </span>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                Security Gate Entry
+              </span>
+            </div>
+          </Link>
+        </div>
+
+        <div className="col-md-3 col-6">
+          <Link
+            to="/expenses"
+            className="app-card text-decoration-none d-flex flex-column justify-content-between h-100"
+            style={{ color: "inherit", padding: "var(--space-5)" }}
+          >
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "rgba(74, 84, 112, 0.1)",
+                  color: "var(--text-secondary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <TrendingUp size={20} />
+              </div>
+              <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: "var(--text-base)", color: "var(--text-primary)", display: "block" }}>
+                Society Ledger
+              </span>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                Audited Statements
+              </span>
+            </div>
+          </Link>
+        </div>
       </div>
     </div>
-    <span className={`bg-${color === 'emerald' ? 'success' : 'primary'} text-white extra-small py-1 px-3 rounded-pill fw-900 uppercase`} style={{fontSize: '0.55rem'}}>{status}</span>
-  </div>
-);
+  );
+};
 
 export default Dashboard;

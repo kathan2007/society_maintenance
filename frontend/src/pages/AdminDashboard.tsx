@@ -1,12 +1,18 @@
-import API_BASE_URL from "../config/api";
 import React, { useEffect, useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { 
-  Users, AlertCircle, Clock, Bell, Wallet, 
-  TrendingUp, ShieldCheck, ArrowUpRight,
-  Activity, BarChart3, PieChart, Settings
+import { Link } from "react-router-dom";
+import {
+  Users,
+  AlertCircle,
+  Clock,
+  Wallet,
+  TrendingUp,
+  Settings,
+  BarChart3,
+  PieChart,
+  ShieldAlert,
+  ArrowRight,
+  DollarSign,
+  CheckCircle,
 } from "lucide-react";
 import {
   Chart as ChartJS,
@@ -18,11 +24,13 @@ import {
   Legend,
   ArcElement,
   PointElement,
-  LineElement
-} from 'chart.js';
-import { Bar, Pie, Line } from 'react-chartjs-2';
+  LineElement,
+} from "chart.js";
+import { Bar, Pie } from "react-chartjs-2";
+import apiClient from "../api/client";
+import { formatCurrency } from "../utils";
+import toast from "react-hot-toast";
 
-// Register ChartJS components
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -36,444 +44,437 @@ ChartJS.register(
 );
 
 const AdminDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const [stats, setStats] = useState({
     users: 0,
     complaints: 0,
-    pending: 0,
-    notices: 0,
-    pendingMaintenance: 0,
+    pendingComplaints: 0,
     collectedMaintenance: 0,
-    totalExpenses: 0
+    pendingMaintenance: 0,
+    totalExpenses: 0,
   });
 
-  const [categoryData, setCategoryData] = useState<{labels: string[], values: number[]}>({labels: [], values: []});
-  const [timelineData, setTimelineData] = useState<{labels: string[], income: number[], expense: number[]}>({labels: [], income: [], expense: []});
-  const [settings, setSettings] = useState({ ownerMaintenanceAmount: 0, rentMaintenanceAmount: 0, penaltyAmount: 0 });
-  const [updatingSettings, setUpdatingSettings] = useState(false);
+  const [categoryData, setCategoryData] = useState<{ labels: string[]; values: number[] }>({
+    labels: [],
+    values: [],
+  });
 
-  const token = localStorage.getItem("token");
+  const [settings, setSettings] = useState({
+    ownerMaintenanceAmount: 800,
+    rentMaintenanceAmount: 1000,
+    penaltyAmount: 100,
+  });
+  const [updatingSettings, setUpdatingSettings] = useState(false);
+  const [loading, setLoading] = useState(true);
+
   const adminName = localStorage.getItem("name") || "Administrator";
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const headers = { Authorization: `Bearer ${token}` };
-        const [users, complaints, notices, maintenance, expenses, settingsRes] = await Promise.all([
-          axios.get(`${API_BASE_URL}/admin/users`, { headers }),
-          axios.get(`${API_BASE_URL}/complaint`, { headers }),
-          axios.get(`${API_BASE_URL}/notice`),
-          axios.get(`${API_BASE_URL}/maintenance`, { headers }),
-          axios.get(`${API_BASE_URL}/expense`, { headers }),
-          axios.get(`${API_BASE_URL}/settings`, { headers })
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const [usersRes, complaintsRes, maintenanceRes, expensesRes, settingsRes] =
+        await Promise.allSettled([
+          apiClient.get("/admin/users"),
+          apiClient.get("/complaint"),
+          apiClient.get("/maintenance"),
+          apiClient.get("/expense"),
+          apiClient.get("/settings"),
         ]);
 
-        const pending = complaints.data.filter((c: any) => c.status === "Pending").length;
-        const pendingMaint = maintenance.data.filter((m: any) => m.status === "Pending").length;
-        const collectedMaint = maintenance.data
-          .filter((m: any) => m.status === "Paid")
-          .reduce((acc: number, m: any) => acc + (Number(m.totalAmount || m.amount) || 0), 0);
-        
-        const totalExp = expenses.data.reduce((acc: number, e: any) => acc + (Number(e.amount) || 0), 0);
+      const usersList = usersRes.status === "fulfilled" ? usersRes.value.data || [] : [];
+      const complaintsList = complaintsRes.status === "fulfilled" ? complaintsRes.value.data || [] : [];
+      const billsList = maintenanceRes.status === "fulfilled" ? maintenanceRes.value.data || [] : [];
+      const expensesList = expensesRes.status === "fulfilled" ? expensesRes.value.data || [] : [];
 
-        // Group expenses by category for Pie Chart
-        const catMap: {[key: string]: number} = {};
-        expenses.data.forEach((e: any) => {
-          catMap[e.category] = (catMap[e.category] || 0) + Number(e.amount);
-        });
-
-        setStats({
-          users: users.data.length,
-          complaints: complaints.data.length,
-          pending: pending,
-          notices: notices.data.length,
-          pendingMaintenance: pendingMaint,
-          collectedMaintenance: collectedMaint,
-          totalExpenses: totalExp
-        });
-
-        setCategoryData({
-          labels: Object.keys(catMap),
-          values: Object.values(catMap)
-        });
-
-        if (settingsRes.data) {
-          setSettings({
-            ownerMaintenanceAmount: settingsRes.data.ownerMaintenanceAmount,
-            rentMaintenanceAmount: settingsRes.data.rentMaintenanceAmount,
-            penaltyAmount: settingsRes.data.penaltyAmount || 0
-          });
-        }
-
-        // Generate 6 Month Timeline
-        const months = [];
-        const incomeTrend = [];
-        const expenseTrend = [];
-        
-        for(let i=5; i>=0; i--) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - i);
-            const mFull = d.toLocaleString('default', { month: 'short' });
-            const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            
-            months.push(mFull);
-            
-            const mInc = maintenance.data
-                .filter((m: any) => m.status === "Paid" && m.month === mKey)
-                .reduce((s: number, m: any) => s + (m.totalAmount || m.amount), 0);
-            
-            const mExp = expenses.data
-                .filter((e: any) => e.date.startsWith(mKey))
-                .reduce((s: number, e: any) => s + e.amount, 0);
-            
-            incomeTrend.push(mInc);
-            expenseTrend.push(mExp);
-        }
-
-        setTimelineData({ labels: months, income: incomeTrend, expense: expenseTrend });
-
-      } catch (err) {
-        console.log("Admin Sync Error", err);
+      if (settingsRes.status === "fulfilled" && settingsRes.value.data) {
+        setSettings(settingsRes.value.data);
       }
-    };
-    fetchData();
-  }, [token]);
 
-  const handleUpdateSettings = async () => {
+      // Calculations
+      const collected = billsList
+        .filter((b: any) => b.status === "Paid")
+        .reduce((sum: number, b: any) => sum + (b.totalAmount || b.amount || 0), 0);
+
+      const pending = billsList
+        .filter((b: any) => b.status === "Pending")
+        .reduce((sum: number, b: any) => sum + (b.totalAmount || b.amount || 0), 0);
+
+      const totalExp = expensesList.reduce(
+        (sum: number, e: any) => sum + Number(e.amount || 0),
+        0
+      );
+
+      const openComplaints = complaintsList.filter(
+        (c: any) => c.status === "Open" || c.status === "In Progress"
+      ).length;
+
+      // Group expense categories
+      const catMap: Record<string, number> = {};
+      expensesList.forEach((e: any) => {
+        const cat = e.category || "General";
+        catMap[cat] = (catMap[cat] || 0) + Number(e.amount || 0);
+      });
+
+      setStats({
+        users: usersList.length,
+        complaints: complaintsList.length,
+        pendingComplaints: openComplaints,
+        collectedMaintenance: collected,
+        pendingMaintenance: pending,
+        totalExpenses: totalExp,
+      });
+
+      setCategoryData({
+        labels: Object.keys(catMap),
+        values: Object.values(catMap),
+      });
+    } catch (err) {
+      toast.error("Failed to sync dashboard metrics");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
       setUpdatingSettings(true);
-      await axios.put(`${API_BASE_URL}/settings`, settings, { headers: { Authorization: `Bearer ${token}` } });
-      alert("Maintenance Settings Updated Successfully!");
-    } catch (err) {
-      alert("Error updating settings.");
+      await apiClient.put("/settings", settings);
+      toast.success("Society fee configuration updated");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to update settings");
     } finally {
       setUpdatingSettings(false);
     }
   };
 
+  const netBalance = stats.collectedMaintenance - stats.totalExpenses;
+
   const barChartData = {
-    labels: ['Financial Overview'],
+    labels: ["Total Collections", "Total Expenses", "Net Reserve"],
     datasets: [
       {
-        label: 'Income (Maintenance)',
-        data: [stats.collectedMaintenance],
-        backgroundColor: '#10b981',
+        label: "Society Capital Breakdown",
+        data: [stats.collectedMaintenance, stats.totalExpenses, netBalance],
+        backgroundColor: ["#1F4FD8", "#A32233", netBalance >= 0 ? "#14623A" : "#A32233"],
         borderRadius: 8,
       },
-      {
-        label: 'Expenses',
-        data: [stats.totalExpenses],
-        backgroundColor: '#f43f5e',
-        borderRadius: 8,
-      }
-    ]
+    ],
   };
 
   const pieChartData = {
     labels: categoryData.labels,
-    datasets: [{
-      data: categoryData.values,
-      backgroundColor: ['#2563eb', '#6366f1', '#f59e0b', '#10b981', '#f43f5e'],
-      borderWidth: 0
-    }]
-  };
-
-  const lineChartData = {
-    labels: timelineData.labels,
     datasets: [
       {
-        label: 'Revenue Trend',
-        data: timelineData.income,
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37, 99, 235, 0.1)',
-        fill: true,
-        tension: 0.4
+        data: categoryData.values,
+        backgroundColor: ["#1F4FD8", "#C9A24B", "#14623A", "#7A4B00", "#A32233", "#4A5470"],
+        borderWidth: 0,
       },
-      {
-        label: 'Expense Trend',
-        data: timelineData.expense,
-        borderColor: '#f43f5e',
-        backgroundColor: 'rgba(244, 63, 94, 0.1)',
-        fill: true,
-        tension: 0.4
-      }
-    ]
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: { opacity: 1, transition: { staggerChildren: 0.1 } }
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 15 },
-    show: { opacity: 1, y: 0 }
+    ],
   };
 
   return (
-    <motion.div 
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      className="page-container"
-    >
-      <div className="container-fluid px-md-4 py-4">
-        
-        {/* --- PREMIUM HEADER --- */}
-        <div className="mb-5 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4">
-          <div>
-            <div className="d-flex align-items-center gap-2 text-primary fw-900 text-uppercase small mb-2 letter-spacing-1">
-              <ShieldCheck size={18} />
-              Command Center Authority
+    <div>
+      {/* ── Page Header: Display Heading in Playfair Display >= 24px ── */}
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-5">
+        <div>
+          <span
+            style={{
+              fontSize: "var(--text-sm)",
+              color: "var(--text-secondary)",
+              fontWeight: 500,
+              display: "block",
+              marginBottom: "var(--space-1)",
+            }}
+          >
+            Administrative Governance Protocol
+          </span>
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "var(--text-3xl)",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              lineHeight: 1.2,
+              marginBottom: "var(--space-1)",
+            }}
+          >
+            Management Dashboard
+          </h1>
+          <p style={{ fontSize: "var(--text-base)", color: "var(--text-secondary)", marginBottom: 0 }}>
+            Oversee residential accounts, treasury inflows, operational expenses, and issue resolutions.
+          </p>
+        </div>
+
+        <div className="d-flex align-items-center gap-2">
+          <Link to="/maintenance" className="btn-gold" style={{ textDecoration: "none" }}>
+            <DollarSign size={16} />
+            <span>Generate Monthly Billing</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Stat Cards Grid (4 Real Cards) ── */}
+      <div className="row g-4 mb-5">
+        {/* Stat 1: Total Collections */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Total Collections</span>
+              <Wallet size={20} style={{ color: "var(--success)" }} />
             </div>
-            <h1 className="fw-900 text-black mb-1 display-5">Admin Overview, {adminName}</h1>
-            <div className="d-flex align-items-center gap-2">
-              <div className="pulse-indicator-green"></div>
-              <span className="text-secondary extra-small fw-900 text-uppercase letter-spacing-2">Live Insights • Financial Control Mode Active</span>
+            <div className="stat-card-value tabular-nums">
+              {formatCurrency(stats.collectedMaintenance)}
             </div>
-          </div>
-          
-          <div className="bg-primary text-white py-3 px-4 shadow-lg rounded-4 d-none d-md-block" style={{background: '#2563eb'}}>
-              <p className="fw-900 mb-0 small text-uppercase letter-spacing-1">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-              <p className="extra-small fw-900 mb-0 text-uppercase letter-spacing-1 mt-1 opacity-75">Control v2.5.0</p>
+            <p className="stat-card-subtext">Realized member maintenance</p>
           </div>
         </div>
 
-        {/* --- STAT CARDS GRID --- */}
-        <div className="row g-4 mb-5">
-          <StatCard 
-            variants={itemVariants}
-            onClick={() => navigate("/admin-users")}
-            icon={<Users size={24} />}
-            value={stats.users}
-            label="Residents"
-            type="blue"
-          />
-          <StatCard 
-            variants={itemVariants}
-            onClick={() => navigate("/admin-complaints")}
-            icon={<AlertCircle size={24} />}
-            value={stats.complaints}
-            label="Reports"
-            type="indigo"
-          />
-          <StatCard 
-            variants={itemVariants}
-            onClick={() => navigate("/maintenance")}
-            icon={<Wallet size={24} />}
-            value={`₹${stats.collectedMaintenance.toLocaleString()}`}
-            label="Total Income"
-            type="green"
-          />
-          <StatCard 
-            variants={itemVariants}
-            onClick={() => navigate("/expenses")}
-            icon={<TrendingUp size={24} />}
-            value={`₹${stats.totalExpenses.toLocaleString()}`}
-            label="Total Expense"
-            type="rose"
-          />
-          <StatCard 
-            variants={itemVariants}
-            onClick={() => navigate("/expenses")}
-            icon={<Activity size={24} />}
-            value={`₹${(stats.collectedMaintenance - stats.totalExpenses).toLocaleString()}`}
-            label="Net Balance"
-            type="amber"
-          />
+        {/* Stat 2: Outstanding Dues */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Outstanding Dues</span>
+              <ShieldAlert size={20} style={{ color: "var(--danger)" }} />
+            </div>
+            <div className="stat-card-value tabular-nums" style={{ color: "var(--danger)" }}>
+              {formatCurrency(stats.pendingMaintenance)}
+            </div>
+            <p className="stat-card-subtext">Uncollected receivables</p>
+          </div>
         </div>
 
-        {/* --- MAINTENANCE SETTINGS CALIBRATION --- */}
-        <div className="row mb-5">
-           <div className="col-lg-12">
-              <div className="bg-white p-4 rounded-4 shadow-sm">
-                 <h5 className="fw-900 text-black text-uppercase letter-spacing-1 mb-4 d-flex align-items-center gap-2">
-                    <Settings size={20} className="text-primary" />
-                    Base Maintenance Calibration
-                 </h5>
-                  <div className="row g-4 align-items-end">
-                    <div className="col-md-3">
-                       <label className="extra-small fw-900 text-uppercase mb-2 text-muted letter-spacing-1">Owner Monthly (₹)</label>
-                       <input 
-                          type="number" 
-                          className="form-control py-3 ps-4 fw-800 text-black border-2" 
-                          style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc'}}
-                          value={settings.ownerMaintenanceAmount}
-                          onChange={(e) => setSettings({...settings, ownerMaintenanceAmount: Number(e.target.value)})}
-                       />
-                    </div>
-                    <div className="col-md-3">
-                       <label className="extra-small fw-900 text-uppercase mb-2 text-muted letter-spacing-1">Rent/Tenant (₹)</label>
-                       <input 
-                          type="number" 
-                          className="form-control py-3 ps-4 fw-800 text-black border-2" 
-                          style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc'}}
-                          value={settings.rentMaintenanceAmount}
-                          onChange={(e) => setSettings({...settings, rentMaintenanceAmount: Number(e.target.value)})}
-                       />
-                    </div>
-                    <div className="col-md-3">
-                       <label className="extra-small fw-900 text-uppercase mb-2 text-muted letter-spacing-1">Penalty After 15th (₹)</label>
-                       <input 
-                          type="number" 
-                          className="form-control py-3 ps-4 fw-800 text-black border-2" 
-                          style={{borderRadius: '12px', borderColor: '#e2e8f0', background: '#f8fafc'}}
-                          value={settings.penaltyAmount}
-                          onChange={(e) => setSettings({...settings, penaltyAmount: Number(e.target.value)})}
-                       />
-                    </div>
-                    <div className="col-md-3">
-                       <button 
-                          className="btn w-100 py-3 fw-900 text-uppercase letter-spacing-1 text-white shadow-sm"
-                          style={{background: '#2563eb', borderRadius: '12px'}}
-                          onClick={handleUpdateSettings}
-                          disabled={updatingSettings}
-                       >
-                          {updatingSettings ? "Syncing..." : "Update Amount"}
-                       </button>
-                    </div>
-                  </div>
+        {/* Stat 3: Active Residents */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Registered Flats</span>
+              <Users size={20} style={{ color: "var(--primary)" }} />
+            </div>
+            <div className="stat-card-value tabular-nums">
+              {stats.users}
+            </div>
+            <p className="stat-card-subtext">Occupied residential units</p>
+          </div>
+        </div>
+
+        {/* Stat 4: Pending Tickets */}
+        <div className="col-lg-3 col-sm-6">
+          <div className="stat-card-v3">
+            <div className="stat-card-label">
+              <span>Open Complaints</span>
+              <AlertCircle size={20} style={{ color: "var(--warning)" }} />
+            </div>
+            <div className="stat-card-value tabular-nums">
+              {stats.pendingComplaints}
+            </div>
+            <p className="stat-card-subtext">Awaiting administrative action</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Charts & Financial Reserves ── */}
+      <div className="row g-4 mb-5">
+        {/* Inflow vs Outflow vs Net Reserve Bar Chart */}
+        <div className="col-lg-8">
+          <div className="app-card h-100">
+            <div className="d-flex align-items-center justify-content-between mb-4">
+              <div className="d-flex align-items-center gap-2">
+                <BarChart3 size={20} style={{ color: "var(--primary)" }} />
+                <h5 style={{ margin: 0, fontWeight: 600 }}>Treasury Reserves & Capital Outflow</h5>
               </div>
-           </div>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                Audited Ledger Balance
+              </span>
+            </div>
+
+            <div style={{ height: "260px" }}>
+              <Bar
+                data={barChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      callbacks: {
+                        label: (ctx) => ` ₹ ${(ctx.parsed.y || 0).toLocaleString("en-IN")}`,
+                      },
+                    },
+                  },
+                  scales: {
+                    y: {
+                      ticks: {
+                        font: { size: 12 },
+                        callback: (v) => `₹ ${Number(v).toLocaleString("en-IN")}`,
+                      },
+                      grid: { color: "rgba(224, 218, 203, 0.4)" },
+                    },
+                    x: {
+                      ticks: { font: { size: 13, weight: "bold" } },
+                      grid: { display: false },
+                    },
+                  },
+                }}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="row g-4 mb-5">
-           {/* --- BUDGET TREND LINE CHART --- */}
-           <div className="col-lg-12">
-              <motion.div variants={itemVariants} className="luxury-card p-4 bg-white" style={{minHeight: '400px'}}>
-                 <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h5 className="fw-900 text-black text-uppercase letter-spacing-1 m-0 d-flex align-items-center gap-2">
-                       <Activity size={20} className="text-primary" />
-                       6-Month Budget Performance Trend
-                    </h5>
-                    <div className="d-flex gap-2">
-                        <div className="extra-small fw-900 text-primary border px-2 py-1 rounded">INCOME</div>
-                        <div className="extra-small fw-900 text-danger border px-2 py-1 rounded">EXPENSE</div>
-                    </div>
-                 </div>
-                 <div style={{height: '350px'}}>
-                    <Line 
-                      data={lineChartData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: { 
-                          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { weight: 'bold' } } },
-                          x: { grid: { display: false }, ticks: { font: { weight: 'bold' } } }
-                        }
-                      }}
-                    />
-                 </div>
-              </motion.div>
-           </div>
-        </div>
+        {/* Expense Categories */}
+        <div className="col-lg-4">
+          <div className="app-card h-100 d-flex flex-column">
+            <div className="d-flex align-items-center gap-2 mb-4">
+              <PieChart size={20} style={{ color: "var(--accent)" }} />
+              <h5 style={{ margin: 0, fontWeight: 600 }}>Expenditure by Category</h5>
+            </div>
 
-        <div className="row g-4 mb-5">
-           {/* --- INCOME VS EXPENSE BAR CHART --- */}
-           <div className="col-lg-7">
-              <motion.div variants={itemVariants} className="luxury-card p-4 h-100 bg-white">
-                 <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h5 className="fw-900 text-black text-uppercase letter-spacing-1 m-0 d-flex align-items-center gap-2">
-                       <BarChart3 size={20} className="text-primary" />
-                       Cumulative Financial Profile
-                    </h5>
-                 </div>
-                 <div style={{height: '300px'}}>
-                    <Bar 
-                      data={barChartData} 
-                      options={{ 
-                        responsive: true, 
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: true, position: 'bottom' } },
-                        scales: { y: { ticks: { font: { weight: 'bold' } } }, x: { ticks: { font: { weight: 'bold' } } } }
-                      }} 
-                    />
-                 </div>
-              </motion.div>
-           </div>
-
-           {/* --- EXPENSE DISTRIBUTION PIE CHART --- */}
-           <div className="col-lg-5">
-              <motion.div variants={itemVariants} className="luxury-card p-4 h-100 bg-white">
-                 <h5 className="fw-900 text-black text-uppercase letter-spacing-1 mb-4 d-flex align-items-center gap-2">
-                    <PieChart size={20} className="text-primary" />
-                    Expenditure Topology
-                 </h5>
-                 <div style={{height: '300px'}} className="d-flex align-items-center justify-content-center">
-                    {categoryData.labels.length > 0 ? (
-                      <Pie 
-                        data={pieChartData}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: { legend: { position: 'right', labels: { font: { weight: 'bold', size: 10 }, boxWidth: 15 } } }
-                        }}
-                      />
-                    ) : (
-                      <div className="text-center opacity-40">
-                         <Activity size={40} className="mx-auto mb-2" />
-                         <p className="extra-small fw-900 uppercase">Awaiting Ledger Entry</p>
-                      </div>
-                    )}
-                 </div>
-              </motion.div>
-           </div>
-        </div>
-
-        <div className="row g-4">
-          <div className="col-lg-12">
-             <div className="luxury-card p-4 bg-white shadow-sm border-0 d-flex justify-content-between align-items-center">
-                <div>
-                   <h6 className="fw-900 text-black text-uppercase mb-1 letter-spacing-2">Financial Health Check</h6>
-                   <p className="text-muted extra-small fw-800 uppercase mb-0">System analyzing total maintenance inflow against society outflow.</p>
+            <div className="flex-grow-1 d-flex align-items-center justify-content-center" style={{ minHeight: "220px" }}>
+              {categoryData.labels.length > 0 ? (
+                <div style={{ width: "100%", height: "240px" }}>
+                  <Pie
+                    data={pieChartData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          position: "bottom",
+                          labels: { font: { family: "Inter", size: 13 }, color: "#4A5470" },
+                        },
+                      },
+                    }}
+                  />
                 </div>
-                <button 
-                  onClick={() => navigate("/expenses")}
-                  className="btn btn-primary py-3 px-5 fw-900 text-uppercase letter-spacing-2 rounded-4 shadow-none border-0"
-                  style={{background: '#2563eb'}}
-                >
-                  Manage Ledger
-                </button>
-             </div>
+              ) : (
+                <div className="text-center py-4" style={{ color: "var(--text-muted)" }}>
+                  <TrendingUp size={36} className="mx-auto mb-2 opacity-50" />
+                  <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>
+                    No recorded operational expenditures.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </motion.div>
-  );
-};
 
-const StatCard = ({ variants, onClick, icon, value, label, type, isUrgent }: any) => {
-  const colorMap = {
-     blue: '#2563eb',
-     indigo: '#6366f1',
-     rose: '#f43f5e',
-     amber: '#f59e0b',
-     green: '#10b981'
-  };
-  
-  return (
-  <div className="col-sm-6 col-lg">
-    <motion.div
-      variants={variants}
-      whileHover={{ y: -5, scale: 1.02 }}
-      onClick={onClick}
-      className={`bg-white p-4 h-100 position-relative cursor-pointer shadow-sm rounded-4 border-bottom border-4`}
-      style={{borderColor: (colorMap as any)[type] || '#000' }}
-    >
-      <div className={`mb-4 d-flex align-items-center justify-content-center rounded-4`} style={{width: '56px', height: '56px', background: `rgba(${(colorMap as any)[type]}, 0.1)`, color: (colorMap as any)[type] }}>
-        {icon}
-      </div>
-      <h2 className="fw-900 mb-1 fs-3 text-black letter-spacing-1">{value}</h2>
-      <p className="text-muted extra-small fw-900 text-uppercase letter-spacing-1 mb-0">{label}</p>
-      
-      {isUrgent && (
-        <div className="mt-3 bg-danger bg-opacity-10 text-danger px-2 py-1 extra-small fw-900 text-uppercase letter-spacing-1 d-inline-block rounded-2">
-          Critical Status
+      {/* ── Society Settings Card (Requirement 3.1) ── */}
+      <div className="row g-4 mb-5">
+        <div className="col-lg-6">
+          <div className="app-card h-100">
+            <div className="d-flex align-items-center gap-2 mb-4">
+              <Settings size={20} style={{ color: "var(--accent)" }} />
+              <h5 style={{ margin: 0, fontWeight: 600 }}>Society Maintenance Rates</h5>
+            </div>
+            <form onSubmit={handleUpdateSettings}>
+              <div className="row g-3">
+                <div className="col-sm-6">
+                  <label className="form-label-v3">Owner Monthly Fee (₹)</label>
+                  <input
+                    type="number"
+                    className="form-control-v3"
+                    value={settings.ownerMaintenanceAmount}
+                    onChange={(e) =>
+                      setSettings({ ...settings, ownerMaintenanceAmount: Number(e.target.value) })
+                    }
+                    min={0}
+                    required
+                  />
+                </div>
+                <div className="col-sm-6">
+                  <label className="form-label-v3">Tenant Monthly Fee (₹)</label>
+                  <input
+                    type="number"
+                    className="form-control-v3"
+                    value={settings.rentMaintenanceAmount}
+                    onChange={(e) =>
+                      setSettings({ ...settings, rentMaintenanceAmount: Number(e.target.value) })
+                    }
+                    min={0}
+                    required
+                  />
+                </div>
+                <div className="col-12">
+                  <label className="form-label-v3">Late Payment Penalty (₹ / month)</label>
+                  <input
+                    type="number"
+                    className="form-control-v3"
+                    value={settings.penaltyAmount}
+                    onChange={(e) =>
+                      setSettings({ ...settings, penaltyAmount: Number(e.target.value) })
+                    }
+                    min={0}
+                    required
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="btn-gold mt-4"
+                disabled={updatingSettings}
+                style={{ minHeight: "40px" }}
+              >
+                {updatingSettings ? "Saving Settings..." : "Save Rate Structure"}
+              </button>
+            </form>
+          </div>
         </div>
-      )}
-    </motion.div>
-  </div>
+
+        {/* Administrative Quick Jump Panel */}
+        <div className="col-lg-6">
+          <div className="app-card h-100 d-flex flex-column justify-content-between">
+            <div>
+              <h5 style={{ fontWeight: 600, marginBottom: "var(--space-2)" }}>Management Modules</h5>
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-4)" }}>
+                Direct shortcuts to administrator registries and logging consoles.
+              </p>
+            </div>
+
+            <div className="d-flex flex-column gap-2">
+              <Link
+                to="/admin-users"
+                className="d-flex align-items-center justify-content-between p-3 rounded text-decoration-none"
+                style={{ backgroundColor: "var(--bg-canvas)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+              >
+                <div className="d-flex align-items-center gap-2">
+                  <Users size={18} style={{ color: "var(--primary)" }} />
+                  <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Resident Registry & Flat Directory</span>
+                </div>
+                <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
+              </Link>
+
+              <Link
+                to="/admin-complaints"
+                className="d-flex align-items-center justify-content-between p-3 rounded text-decoration-none"
+                style={{ backgroundColor: "var(--bg-canvas)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+              >
+                <div className="d-flex align-items-center gap-2">
+                  <AlertCircle size={18} style={{ color: "var(--warning)" }} />
+                  <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Complaints & Redressal Desk</span>
+                </div>
+                <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
+              </Link>
+
+              <Link
+                to="/expenses"
+                className="d-flex align-items-center justify-content-between p-3 rounded text-decoration-none"
+                style={{ backgroundColor: "var(--bg-canvas)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+              >
+                <div className="d-flex align-items-center gap-2">
+                  <DollarSign size={18} style={{ color: "var(--accent-text)" }} />
+                  <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Society Ledger & Expense Tracker</span>
+                </div>
+                <ArrowRight size={16} style={{ color: "var(--text-muted)" }} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 

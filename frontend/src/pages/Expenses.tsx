@@ -3,9 +3,9 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  DollarSign, Plus, Trash2, Calendar, FileText,
-  Search, Download, AlertCircle, CheckCircle, PieChart, TrendingDown,
-  Shield, CreditCard, Loader2, MessageSquare
+  Receipt, Plus, Trash2, Calendar, FileText,
+  Search, Download, AlertCircle, CheckCircle,
+  TrendingDown, Loader2, MessageSquare, IndianRupee,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -21,411 +21,541 @@ interface ExpenseType {
   addedBy: { name: string };
 }
 
+const CATEGORIES = ["Maintenance", "Electricity", "Security", "Water", "Cleaning Service of the Society", "Others"];
+
 const Expenses: React.FC = () => {
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [info, setInfo] = useState("");
-  const [error, setError] = useState("");
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showForm, setShowForm] = useState(false);
 
   const token = localStorage.getItem("token");
   const role = localStorage.getItem("role");
 
+  const notify = (msg: string, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  };
+
   const fetchExpenses = async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/expense`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       setExpenses(res.data);
-    } catch (err) {
-      setError("Failed to sync financial data");
+    } catch {
+      notify("Failed to load expense data", false);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchExpenses(); }, []);
+  useEffect(() => {
+    fetchExpenses();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !amount || !category) return setError("Mandatory protocol: All fields required");
-
+    if (!title || !amount || !category) return notify("All fields are required", false);
     setIsSubmitting(true);
     try {
-      await axios.post(`${API_BASE_URL}/expense`,
+      await axios.post(
+        `${API_BASE_URL}/expense`,
         { title, amount: Number(amount), category, date, description },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setInfo("Expenditure committed to ledger.");
+      notify("Expense recorded successfully");
       setTitle(""); setAmount(""); setCategory(""); setDescription("");
+      setShowForm(false);
       fetchExpenses();
-    } catch (err) {
-      setError("Encryption failed: Record not saved");
+    } catch {
+      notify("Failed to record expense", false);
     } finally {
       setIsSubmitting(false);
-      setTimeout(() => { setInfo(""); setError(""); }, 4000);
     }
   };
 
   const handleDeleteExpense = async (id: string) => {
-    if (!window.confirm("Authorize permanent deletion of this record?")) return;
+    if (!window.confirm("Delete this expense record?")) return;
     try {
       await axios.delete(`${API_BASE_URL}/expense/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setInfo("Ledger entry purged.");
+      notify("Expense deleted");
       fetchExpenses();
-    } catch (err) {
-      setError("Access Denied: Could not purge record");
+    } catch {
+      notify("Failed to delete expense", false);
     }
   };
 
-  const downloadLedger = () => {
+  const downloadPDF = () => {
     const doc = new jsPDF();
-
-    // Header
-    doc.setFillColor(37, 99, 235); // Blue
-    doc.rect(0, 0, 210, 40, "F");
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
+    doc.setFillColor(11, 27, 58);
+    doc.rect(0, 0, 210, 38, "F");
+    doc.setTextColor(201, 162, 75);
+    doc.setFontSize(18);
     doc.setFont("helvetica", "bold");
-    doc.text("SHREE HARI GIFT CITY FINANCIAL LEDGER", 15, 22);
-    
+    doc.text("SHREE HARI GIFT CITY", 14, 18);
+    doc.setTextColor(246, 243, 236);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("SHRI HARI GIFT CITY, NAVA NARODA, AHMEDABAD", 15, 30);
-    doc.text(`Report Period: FY 2026-27 | Generated on: ${new Date().toLocaleDateString()}`, 15, 36);
+    doc.text("Society Financial Ledger", 14, 27);
+    doc.text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 14, 33);
 
-    // Summary Section
-    const totalOutflow = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const totalOutflow = expenses.reduce((s, e) => s + e.amount, 0);
     doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.text("EXPENDITURE SUMMARY", 15, 55);
-    
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Total Number of Records: ${expenses.length}`, 15, 62);
-    doc.text(`Total Capital Outflow: INR ${totalOutflow.toLocaleString()}/-`, 15, 68);
-
-    // Table
-    const tableData = expenses.map(exp => [
-      new Date(exp.date).toLocaleDateString(),
-      exp.title,
-      exp.category,
-      `INR ${exp.amount.toLocaleString()}`,
-      exp.addedBy?.name || "Admin"
-    ]);
+    doc.text(`Total Expenditure: ₹${totalOutflow.toLocaleString("en-IN")}`, 14, 50);
 
     autoTable(doc, {
-      startY: 75,
-      head: [['Date', 'Description', 'Category', 'Amount', 'Authorized By']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 3 },
-      columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } }
+      startY: 56,
+      head: [["Date", "Description", "Category", "Amount (₹)", "By"]],
+      body: expenses.map((exp) => [
+        new Date(exp.date).toLocaleDateString("en-IN"),
+        exp.title,
+        exp.category,
+        exp.amount.toLocaleString("en-IN"),
+        exp.addedBy?.name || "Admin",
+      ]),
+      theme: "grid",
+      headStyles: { fillColor: [11, 27, 58], textColor: [201, 162, 75], fontStyle: "bold" },
+      styles: { fontSize: 9, cellPadding: 3 },
+      columnStyles: { 3: { halign: "right" } },
     });
 
     doc.save("Society_Expense_Ledger.pdf");
+    notify("PDF downloaded");
   };
 
   const downloadExcel = () => {
-    const dataToExport = expenses.map(exp => ({
-      Date: new Date(exp.date).toLocaleDateString(),
-      Description: exp.title,
-      Category: exp.category,
-      Amount: exp.amount,
-      "Authorized By": exp.addedBy?.name || "Admin",
-      Remarks: exp.description || ""
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Expenses");
-    
-    // Set column widths
-    const wscols = [
-      { wch: 15 }, // Date
-      { wch: 30 }, // Description
-      { wch: 15 }, // Category
-      { wch: 15 }, // Amount
-      { wch: 20 }, // Authorized By
-      { wch: 40 }  // Remarks
-    ];
-    worksheet['!cols'] = wscols;
-
-    XLSX.writeFile(workbook, "Society_Expenses.xlsx");
-    setInfo("Excel ledger exported successfully.");
+    const ws = XLSX.utils.json_to_sheet(
+      expenses.map((exp) => ({
+        Date: new Date(exp.date).toLocaleDateString("en-IN"),
+        Description: exp.title,
+        Category: exp.category,
+        "Amount (₹)": exp.amount,
+        "Authorized By": exp.addedBy?.name || "Admin",
+        Remarks: exp.description || "",
+      }))
+    );
+    ws["!cols"] = [{ wch: 15 }, { wch: 30 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 40 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+    XLSX.writeFile(wb, "Society_Expenses.xlsx");
+    notify("Excel exported");
   };
 
-  const shareOnWhatsApp = (expense: ExpenseType) => {
-    const message = `*SHREE HARI GIFT CITY EXPENDITURE REPORT*%0A----------------------------%0A*Subject:* ${expense.title}%0A*Category:* ${expense.category}%0A*Amount:* ₹${expense.amount.toLocaleString()}%0A*Date:* ${new Date(expense.date).toLocaleDateString()}%0A----------------------------%0A*Instructions:* I have attached the official PDF receipt for this expenditure. Please check below.`;
-    
-    // Logic: Trigger individual PDF download first
-    const doc = new jsPDF();
-    doc.text("SHREE HARI GIFT CITY - EXPENDITURE RECEIPT", 10, 10);
-    doc.text(`Subject: ${expense.title}`, 10, 20);
-    doc.text(`Amount: INR ${expense.amount.toLocaleString()}`, 10, 30);
-    doc.save(`Expense_${expense.title.replace(/\s+/g, '_')}.pdf`);
-    
-    // Then open WhatsApp
-    setTimeout(() => {
-        window.open(`https://wa.me/?text=${message}`, '_blank');
-    }, 1000);
+  const shareWhatsApp = (expense: ExpenseType) => {
+    const msg = `*SHREE HARI GIFT CITY — Expense*%0A*Subject:* ${expense.title}%0A*Category:* ${expense.category}%0A*Amount:* ₹${expense.amount.toLocaleString("en-IN")}%0A*Date:* ${new Date(expense.date).toLocaleDateString("en-IN")}`;
+    window.open(`https://wa.me/?text=${msg}`, "_blank");
   };
 
-  const filteredExpenses = expenses.filter(exp =>
-    exp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    exp.category.toLowerCase().includes(searchTerm.toLowerCase())
+  const filtered = expenses.filter(
+    (e) =>
+      e.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-  const uniqueCategoriesCount = Array.from(new Set(expenses.map(e => e.category))).length;
+  const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "var(--space-3) var(--space-4)",
+    border: "1.5px solid var(--border)",
+    borderRadius: "var(--radius-sm)",
+    fontSize: "var(--text-sm)",
+    color: "var(--text-primary)",
+    background: "var(--bg-canvas)",
+    outline: "none",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "var(--text-xs)",
+    fontWeight: "var(--weight-semibold)",
+    color: "var(--text-muted)",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    marginBottom: "var(--space-2)",
+  };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }} 
-      animate={{ opacity: 1, y: 0 }} 
-      transition={{ duration: 0.5 }}
-      className="page-container"
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="main-content"
+      style={{ padding: "var(--space-6)" }}
     >
-      <div className="container-fluid px-md-4 py-4">
-
-        {/* --- HEADER --- */}
-        <div className="mb-5 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4">
-          <div className="d-flex align-items-center gap-4">
-            <div className="icon-badge-blue">
-              <DollarSign size={32} />
-            </div>
-            <div>
-              <h1 className="fw-900 text-gradient mb-1">Society Ledger</h1>
-              <p className="text-secondary small fw-800 text-uppercase letter-spacing-1">Financial Transparency & Resource Tracking</p>
-            </div>
+      {/* ── Header ── */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "var(--space-4)",
+          marginBottom: "var(--space-6)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "var(--radius-md)",
+              background: "var(--accent-light)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--accent-text)",
+            }}
+          >
+            <Receipt size={24} />
           </div>
-          <div className="d-flex gap-3">
-            <motion.button 
-               whileHover={{ scale: 1.05 }}
-               whileTap={{ scale: 0.95 }}
-               onClick={downloadExcel}
-               className="btn-light border-1 px-4 py-3 rounded-3 d-flex align-items-center gap-2"
-               style={{background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a', fontWeight: 800}}
-            >
-              <FileText size={20} className="text-success" /> Excel
-            </motion.button>
-            <motion.button 
-               whileHover={{ scale: 1.05 }}
-               whileTap={{ scale: 0.95 }}
-               onClick={downloadLedger}
-               className="btn-light border-1 px-4 py-3 rounded-3 d-flex align-items-center gap-2"
-               style={{background: '#f8fafc', border: '1px solid #e2e8f0', color: '#2563eb', fontWeight: 800}}
-            >
-              <Download size={20} className="text-primary" /> PDF
-            </motion.button>
+          <div>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)", marginBottom: 2 }}>
+              Society Ledger
+            </h2>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", margin: 0 }}>
+              Financial transparency & resource tracking
+            </p>
           </div>
         </div>
 
-        {/* --- ALERTS --- */}
-        <AnimatePresence>
-          {(info || error) && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }} 
-              animate={{ opacity: 1, scale: 1 }} 
-              exit={{ opacity: 0, scale: 0.95 }}
-              className={`custom-alert mb-4 ${error ? 'alert-minimal-danger' : 'alert-minimal-blue'}`}
+        <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
+          {role === "admin" && (
+            <button
+              onClick={() => setShowForm((f) => !f)}
+              className="btn-gold"
+              style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}
             >
-              <div className="d-flex align-items-center gap-3">
-                {error ? <AlertCircle size={20} /> : <CheckCircle size={20} />}
-                <span className="fw-800 extra-small text-uppercase letter-spacing-1">{error || info}</span>
-              </div>
-            </motion.div>
+              <Plus size={16} />
+              {showForm ? "Cancel" : "Add Expense"}
+            </button>
           )}
-        </AnimatePresence>
+          <button
+            onClick={downloadExcel}
+            className="btn-outline-gold"
+            style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}
+          >
+            <FileText size={16} /> Excel
+          </button>
+          <button
+            onClick={downloadPDF}
+            className="btn-outline-gold"
+            style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}
+          >
+            <Download size={16} /> PDF
+          </button>
+        </div>
+      </div>
 
-        <div className="row g-4">
-          {/* --- STATS SIDEBAR --- */}
-          <div className="col-lg-3">
-            <div className="d-flex flex-column gap-4">
-              <div className="luxury-card p-4 border-start border-4 border-primary bg-white">
-                <p className="extra-small text-muted fw-800 text-uppercase mb-2 letter-spacing-1">Total Outflow</p>
-                <h2 className="fw-900 text-black mb-2">₹{totalExpenses.toLocaleString()}</h2>
-                <div className="d-flex align-items-center gap-2 text-danger extra-small fw-900 uppercase">
-                  <TrendingDown size={14} /> <span>Live Cycle</span>
-                </div>
-              </div>
+      {/* ── Toast ── */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+              padding: "var(--space-3) var(--space-5)",
+              borderRadius: "var(--radius-md)",
+              background: toast.ok ? "var(--success-bg)" : "var(--danger-bg)",
+              color: toast.ok ? "var(--success)" : "var(--danger)",
+              fontSize: "var(--text-sm)",
+              fontWeight: "var(--weight-semibold)",
+              marginBottom: "var(--space-4)",
+              border: `1px solid ${toast.ok ? "var(--success)" : "var(--danger)"}`,
+            }}
+          >
+            {toast.ok ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-              <div className="luxury-card p-4 border-start border-4 border-indigo bg-white" style={{borderColor: '#6366f1'}}>
-                <p className="extra-small text-muted fw-800 text-uppercase mb-2 letter-spacing-1">Activity Nodes</p>
-                <h2 className="fw-900 text-black mb-2">{uniqueCategoriesCount}</h2>
-                <div className="d-flex align-items-center gap-2 text-primary extra-small fw-900 uppercase">
-                  <PieChart size={14} /> <span>Distributed</span>
-                </div>
-              </div>
-            </div>
+      {/* ── Summary Stat ── */}
+      <div
+        className="app-card"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-5)",
+          padding: "var(--space-5) var(--space-6)",
+          marginBottom: "var(--space-6)",
+          background: "var(--bg-sidebar)",
+          color: "var(--text-on-dark)",
+        }}
+      >
+        <div style={{ padding: "var(--space-3)", background: "rgba(201,162,75,0.15)", borderRadius: "var(--radius-md)" }}>
+          <TrendingDown size={24} style={{ color: "var(--accent)" }} />
+        </div>
+        <div>
+          <div style={{ fontSize: "var(--text-xs)", color: "rgba(246,243,236,0.6)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+            Total Outflow
           </div>
+          <div style={{ fontSize: "var(--text-3xl)", fontWeight: "var(--weight-bold)", color: "var(--accent)", fontFamily: "var(--font-display)", lineHeight: 1 }}>
+            ₹{totalExpenses.toLocaleString("en-IN")}
+          </div>
+          <div style={{ fontSize: "var(--text-xs)", color: "rgba(246,243,236,0.5)", marginTop: 4 }}>
+            {expenses.length} records
+          </div>
+        </div>
+      </div>
 
-          {/* --- FORM SECTION --- */}
-          <div className="col-lg-9">
-            {role === "admin" ? (
-              <div className="luxury-card p-4 h-100 bg-white shadow-sm border-0">
-                <h5 className="fw-900 text-black mb-4 d-flex align-items-center gap-3 uppercase letter-spacing-1">
-                  <CreditCard size={24} className="text-primary" /> Record Expenditure
-                </h5>
-                <form onSubmit={handleAddExpense} className="row g-4">
-                  <div className="col-md-3">
-                    <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block ms-1">Subject</label>
-                    <input type="text" className="form-control py-3 rounded-3" placeholder="e.g. Lift Maintenance v2" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      {/* ── Add Expense Form ── */}
+      <AnimatePresence>
+        {showForm && role === "admin" && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            style={{ overflow: "hidden", marginBottom: "var(--space-6)" }}
+          >
+            <div className="app-card" style={{ padding: "var(--space-6)" }}>
+              <h5 style={{ fontWeight: "var(--weight-semibold)", marginBottom: "var(--space-5)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                <IndianRupee size={18} style={{ color: "var(--accent)" }} />
+                Record New Expense
+              </h5>
+              <form onSubmit={handleAddExpense}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--space-4)" }}>
+                  <div>
+                    <label style={labelStyle}>Subject</label>
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lift Maintenance" required style={inputStyle} />
                   </div>
-                  <div className="col-md-3">
-                    <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block ms-1">Amount</label>
-                    <div className="position-relative">
-                       <input type="number" className="form-control py-3 rounded-3" placeholder="00.00" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-                    </div>
+                  <div>
+                    <label style={labelStyle}>Amount (₹)</label>
+                    <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required style={inputStyle} />
                   </div>
-                  <div className="col-md-3">
-                    <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block ms-1">Type</label>
-                    <select className="form-select py-3 rounded-3" value={category} onChange={(e) => setCategory(e.target.value)} required>
-                      <option value="">Select...</option>
-                      <option value="Maintenance">Maintenance</option>
-                      <option value="Electricity">Electricity</option>
-                      <option value="Security">Security</option>
-                      <option value="Water">Water Supply</option>
-                      <option value="Cleaning Service of the Society">Cleaning Service of the Society</option>
-                      <option value="Others">Others</option>
+                  <div>
+                    <label style={labelStyle}>Category</label>
+                    <select value={category} onChange={(e) => setCategory(e.target.value)} required style={inputStyle}>
+                      <option value="">Select…</option>
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
                     </select>
                   </div>
-                  <div className="col-md-3">
-                    <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block ms-1">Date</label>
-                    <input type="date" className="form-control py-3 rounded-3" value={date} onChange={(e) => setDate(e.target.value)} required />
+                  <div>
+                    <label style={labelStyle}>Date</label>
+                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required style={inputStyle} />
                   </div>
-                  <div className="col-md-9">
-                    <label className="extra-small fw-900 text-black text-uppercase mb-2 d-block ms-1">Internal Notes</label>
-                    <input type="text" className="form-control py-3 rounded-3" placeholder="Brief technical or financial details..." value={description} onChange={(e) => setDescription(e.target.value)} />
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={labelStyle}>Notes (optional)</label>
+                    <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Additional details…" style={inputStyle} />
                   </div>
-                  <div className="col-md-3 d-flex align-items-end">
-                    <motion.button 
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      disabled={isSubmitting} 
-                      type="submit" 
-                      className="btn-blue-solid w-100 py-3 rounded-3"
-                    >
-                      {isSubmitting ? <Loader2 size={24} className="animate-spin mx-auto" /> : "Authorize"}
-                    </motion.button>
+                  <div style={{ display: "flex", alignItems: "flex-end" }}>
+                    <button type="submit" disabled={isSubmitting} className="btn-gold" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space-2)" }}>
+                      {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                      {isSubmitting ? "Saving…" : "Save"}
+                    </button>
                   </div>
-                </form>
-              </div>
-            ) : (
-              <div className="luxury-card p-5 d-flex flex-column align-items-center justify-content-center text-center bg-white shadow-sm border-0">
-                <Shield size={48} className="text-primary opacity-20 mb-4" />
-                <h5 className="text-black fw-900 uppercase">Verified Ledger Access</h5>
-                <p className="extra-small text-muted fw-900 uppercase letter-spacing-1 mb-0">Live Audit Sync Enabled • Read Only Mode</p>
-              </div>
-            )}
-          </div>
-
-          {/* --- TABLE SECTION --- */}
-          <div className="col-12">
-            <div className="luxury-card p-0 overflow-hidden bg-white shadow-sm border-0">
-              <div className="p-4 border-bottom d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                <h5 className="fw-900 text-black mb-0 d-flex align-items-center gap-3 uppercase letter-spacing-1">
-                  <FileText size={24} className="text-primary" /> Active Ledger
-                </h5>
-                <div className="search-box-light bg-light rounded-pill px-4">
-                  <Search size={18} className="text-primary" />
-                  <input
-                    type="text"
-                    className="border-0 bg-transparent py-2"
-                    placeholder="Filter records..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
                 </div>
-              </div>
-              <div className="table-responsive">
-                <table className="table mb-0 align-middle">
-                  <thead>
-                    <tr>
-                      <th className="ps-4 py-4 text-muted extra-small fw-900 text-uppercase letter-spacing-1">Expense Date</th>
-                      <th className="py-4 text-muted extra-small fw-900 text-uppercase letter-spacing-1">Description</th>
-                      <th className="py-4 text-muted extra-small fw-900 text-uppercase letter-spacing-1">Category</th>
-                      <th className="py-4 text-muted extra-small fw-900 text-uppercase letter-spacing-1">Investment</th>
-                      <th className="py-4 text-muted extra-small fw-900 text-uppercase letter-spacing-1">Authorized</th>
-                      {role === "admin" && <th className="text-end pe-4 py-4 text-muted extra-small fw-900 text-uppercase letter-spacing-1">Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr><td colSpan={6} className="text-center py-5"><Loader2 size={48} className="animate-spin text-primary mx-auto" /></td></tr>
-                    ) : filteredExpenses.length === 0 ? (
-                      <tr><td colSpan={6} className="text-center py-5">
-                         <div className="opacity-40 py-4">
-                            <PieChart size={64} className="mx-auto mb-3" />
-                            <p className="fw-800 extra-small text-uppercase text-black">No financial logs detected</p>
-                         </div>
-                      </td></tr>
-                    ) : (
-                      filteredExpenses.map((expense, idx) => (
-                        <motion.tr 
-                          key={expense._id} 
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.05 }}
-                        >
-                          <td className="ps-4 py-3">
-                             <div className="d-flex flex-column">
-                               <span className="fw-900 text-black small">{new Date(expense.date).toLocaleDateString()}</span>
-                             </div>
-                          </td>
-                          <td>
-                            <div className="fw-900 text-black mb-0 text-uppercase extra-small letter-spacing-1">{expense.title}</div>
-                            <div className="extra-small text-muted fw-800">{expense.description || "System Approved Expenditure"}</div>
-                          </td>
-                          <td>
-                            <span className="bg-light text-primary py-1 px-3 rounded-pill extra-small fw-900 uppercase" style={{fontSize: '0.65rem', border: '1px solid rgba(37,99,235,0.1)'}}>{expense.category}</span>
-                          </td>
-                          <td>
-                            <span className="fw-900 text-black">₹{expense.amount.toLocaleString()}</span>
-                          </td>
-                          <td>
-                             <span className="extra-small text-muted fw-900 uppercase letter-spacing-1">{expense.addedBy?.name || "Admin"}</span>
-                          </td>
-                          {role === "admin" && (
-                            <td className="text-end pe-4 d-flex align-items-center justify-content-end gap-2">
-                              <motion.button 
-                                whileHover={{ scale: 1.1, color: '#25d366' }}
-                                onClick={() => shareOnWhatsApp(expense)} 
-                                className="btn border-0 text-muted transition-all p-2"
-                                title="Share on WhatsApp"
-                              >
-                                <MessageSquare size={18} />
-                              </motion.button>
-                              <motion.button 
-                                whileHover={{ scale: 1.1, color: '#f43f5e' }}
-                                onClick={() => handleDeleteExpense(expense._id)} 
-                                className="btn border-0 text-muted transition-all p-2"
-                                title="Delete Record"
-                              >
-                                <Trash2 size={18} />
-                              </motion.button>
-                            </td>
-                          )}
-                        </motion.tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              </form>
             </div>
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Search + Table ── */}
+      <div className="app-card" style={{ overflow: "hidden", padding: 0 }}>
+        {/* Table Header with search */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "var(--space-4)",
+            padding: "var(--space-4) var(--space-5)",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <h6 style={{ fontWeight: "var(--weight-semibold)", margin: 0, display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            <FileText size={16} style={{ color: "var(--accent)" }} />
+            Expense Records
+          </h6>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              background: "var(--bg-canvas)",
+              border: "1.5px solid var(--border)",
+              borderRadius: "var(--radius-pill)",
+              padding: "var(--space-2) var(--space-4)",
+              minWidth: 220,
+            }}
+          >
+            <Search size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Filter records…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                fontSize: "var(--text-sm)",
+                color: "var(--text-primary)",
+                width: "100%",
+              }}
+            />
+          </label>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="table-v3" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ paddingLeft: "var(--space-5)" }}>Date</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Amount</th>
+                <th>Authorized By</th>
+                {role === "admin" && <th style={{ textAlign: "right", paddingRight: "var(--space-5)" }}>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "var(--space-12)" }}>
+                    <Loader2 size={32} className="animate-spin" style={{ color: "var(--accent)" }} />
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <div style={{ textAlign: "center", padding: "var(--space-12) var(--space-6)", color: "var(--text-muted)" }}>
+                      <Receipt size={48} style={{ opacity: 0.25, marginBottom: "var(--space-3)" }} />
+                      <p style={{ fontWeight: "var(--weight-semibold)", maxWidth: "none" }}>No expense records found</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((expense, idx) => (
+                  <motion.tr
+                    key={expense._id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.03 }}
+                    style={{ borderBottom: "1px solid var(--border)" }}
+                  >
+                    {/* Date */}
+                    <td style={{ paddingLeft: "var(--space-5)", paddingTop: "var(--space-3)", paddingBottom: "var(--space-3)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
+                        <Calendar size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                        {new Date(expense.date).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                      </div>
+                    </td>
+
+                    {/* Description */}
+                    <td>
+                      <div style={{ fontWeight: "var(--weight-semibold)", fontSize: "var(--text-sm)", color: "var(--text-primary)" }}>
+                        {expense.title}
+                      </div>
+                      {expense.description && (
+                        <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 2 }}>
+                          {expense.description}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Category */}
+                    <td>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px var(--space-3)",
+                          borderRadius: "var(--radius-pill)",
+                          background: "var(--accent-light)",
+                          color: "var(--accent-text)",
+                          fontSize: "var(--text-xs)",
+                          fontWeight: "var(--weight-semibold)",
+                        }}
+                      >
+                        {expense.category}
+                      </span>
+                    </td>
+
+                    {/* Amount */}
+                    <td>
+                      <span style={{ fontWeight: "var(--weight-bold)", fontSize: "var(--text-base)", color: "var(--danger)" }}>
+                        ₹{expense.amount.toLocaleString("en-IN")}
+                      </span>
+                    </td>
+
+                    {/* Authorized By */}
+                    <td>
+                      <span style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
+                        {expense.addedBy?.name || "Admin"}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    {role === "admin" && (
+                      <td style={{ textAlign: "right", paddingRight: "var(--space-5)" }}>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-2)" }}>
+                          <button
+                            onClick={() => shareWhatsApp(expense)}
+                            title="Share on WhatsApp"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "var(--text-muted)",
+                              padding: "var(--space-2)",
+                              borderRadius: "var(--radius-sm)",
+                              display: "flex",
+                              alignItems: "center",
+                              transition: "color 0.15s",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = "#25D366")}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                          >
+                            <MessageSquare size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteExpense(expense._id)}
+                            title="Delete"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "var(--text-muted)",
+                              padding: "var(--space-2)",
+                              borderRadius: "var(--radius-sm)",
+                              display: "flex",
+                              alignItems: "center",
+                              transition: "color 0.15s",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </motion.tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </motion.div>

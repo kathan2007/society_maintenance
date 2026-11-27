@@ -1,216 +1,250 @@
-import API_BASE_URL from "../config/api";
 import React, { useEffect, useState } from "react";
-import axios from "axios";
-import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, Send, Clock, CheckCircle, AlertCircle, LifeBuoy, ChevronRight, Inbox, User, Home, Users } from "lucide-react";
+import {
+  MessageSquare,
+  Send,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  LifeBuoy,
+  Inbox,
+  Filter,
+} from "lucide-react";
+import apiClient from "../api/client";
+import { formatDate } from "../utils";
+import toast from "react-hot-toast";
+import type { Complaint } from "../types";
 
-const Complaint: React.FC = () => {
-  const [message, setMessage] = useState("");
-  const [category, setCategory] = useState("General");
-  const [complaints, setComplaints] = useState<any[]>([]);
+const ComplaintPage: React.FC = () => {
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Maintenance");
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState<{type:string,text:string}>({type:"",text:""});
+  const [filterCategory, setFilterCategory] = useState("All");
 
-  const token = localStorage.getItem("token");
+  const categories = [
+    "Maintenance",
+    "Plumbing",
+    "Electrical",
+    "Security",
+    "Elevator",
+    "Cleanliness",
+    "General",
+  ];
 
   const fetchComplaints = async () => {
-    if(!token) return;
     try {
-      const res = await axios.get(`${API_BASE_URL}/complaint`,{
-        headers:{Authorization:`Bearer ${token}`}
-      });
-      setComplaints(res.data);
-    } catch(err){
-      setAlert({ type:"danger", text:"Failed to sync your complaints." });
+      const res = await apiClient.get<Complaint[]>("/complaint");
+      setComplaints(res.data || []);
+    } catch (err) {
+      toast.error("Failed to sync issue records");
     }
   };
 
-  useEffect(()=>{
+  useEffect(() => {
     fetchComplaints();
-  },[]);
+  }, []);
 
-  const sendComplaint = async () => {
-    if(!message.trim()){
-      setAlert({ type:"warning", text:"Please describe the issue in detail." });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (description.trim().length < 5) {
+      toast.error("Please provide a description of at least 5 characters.");
       return;
     }
 
-    try{
+    try {
       setLoading(true);
-      await axios.post(
-        `${API_BASE_URL}/complaint`,
-        { message, category },
-        { headers:{Authorization:`Bearer ${token}`} }
-      );
-      setMessage("");
-      setAlert({ type:"success", text:"Ticket raised successfully! We'll update you soon." });
+      await apiClient.post("/complaint", {
+        category,
+        description: description.trim(),
+      });
+      setDescription("");
+      toast.success("Support ticket submitted successfully");
       fetchComplaints();
-    }catch(err){
-      setAlert({ type:"danger", text:"Transmission error. Please try again." });
-    }finally{
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to submit ticket");
+    } finally {
       setLoading(false);
-      setTimeout(() => setAlert({type:"", text:""}), 5000);
     }
   };
 
+  const filtered = complaints.filter(
+    (c) => filterCategory === "All" || c.category === filterCategory
+  );
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="page-container"
-    >
-      <div className="container-fluid px-md-4 py-4">
-        
-        {/* --- HEADER SECTION --- */}
-        <div className="mb-5 d-flex align-items-center gap-4">
-          <div className="icon-badge-blue">
-            <LifeBuoy size={32} />
-          </div>
-          <div>
-            <h1 className="fw-900 text-gradient mb-1">Help & Support</h1>
-            <p className="text-secondary small fw-800 text-uppercase letter-spacing-1">Raise & Track Your Society Tickets</p>
-          </div>
-        </div>
+    <div>
+      {/* ── Page Header ── */}
+      <div className="mb-5">
+        <h1
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: "var(--text-3xl)",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            marginBottom: "var(--space-1)",
+          }}
+        >
+          Community Redressal & Support
+        </h1>
+        <p style={{ fontSize: "var(--text-base)", color: "var(--text-secondary)", marginBottom: 0 }}>
+          Submit maintenance requests, report facility disruptions, and monitor resolution progress.
+        </p>
+      </div>
 
-        {/* --- ALERTS --- */}
-        <AnimatePresence>
-          {alert.text && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={`custom-alert alert-minimal-${alert.type === 'danger' ? 'danger' : 'blue'} mb-4`}
-            >
-              <AlertCircle size={20} />
-              <span className="fw-bold">{alert.text}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="row g-4">
+        {/* Ticket Submission Form */}
+        <div className="col-lg-5">
+          <div className="app-card">
+            <div className="d-flex align-items-center gap-2 mb-4">
+              <LifeBuoy size={20} style={{ color: "var(--accent)" }} />
+              <h5 style={{ margin: 0, fontWeight: 600 }}>Log a New Issue</h5>
+            </div>
 
-        <div className="row g-5">
-          {/* LEFT: FORM SIDE */}
-          <div className="col-lg-5 col-xl-4">
-            <div className="luxury-card p-4 h-100">
-              <h5 className="fw-900 text-gradient mb-4 d-flex align-items-center gap-2">
-                <MessageSquare size={22} className="text-primary" />
-                New Support Ticket
-              </h5>
-
-              <div className="mb-4">
-                <label className="extra-small fw-800 text-muted text-uppercase mb-2 d-block letter-spacing-1">Issue Category</label>
+            <form onSubmit={handleSubmit}>
+              <div className="mb-3">
+                <label className="form-label-v3">Issue Category</label>
                 <select
-                  className="modern-select"
+                  className="form-select-v3"
                   value={category}
-                  onChange={(e)=>setCategory(e.target.value)}
+                  onChange={(e) => setCategory(e.target.value)}
                 >
-                  <option value="General">General Inquiry</option>
-                  <option value="Plumbing">Plumbing & Water</option>
-                  <option value="Electrical">Electrical & Power</option>
-                  <option value="Security">Security & Access</option>
-                  <option value="Cleaning">Housekeeping</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="mb-4">
-                <label className="extra-small fw-800 text-muted text-uppercase mb-2 d-block letter-spacing-1">Detailed Description</label>
+                <label className="form-label-v3">Detailed Description</label>
                 <textarea
-                  className="modern-textarea"
-                  rows={6}
-                  placeholder="Tell us what's wrong..."
-                  value={message}
-                  onChange={(e)=>setMessage(e.target.value)}
+                  className="form-control-v3"
+                  rows={4}
+                  placeholder="Describe location, nature of issue, and urgency..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  style={{ resize: "vertical" }}
+                  required
                 />
+                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
+                  Minimum 5 characters. Server-sanitized against script injection.
+                </span>
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={sendComplaint}
-                className="btn-blue-solid w-100 py-3 d-flex align-items-center justify-content-center gap-2"
-                disabled={loading}
-              >
-                {loading ? <span className="animate-spin"><Inbox size={20}/></span> : <><Send size={18}/> Transmit Ticket</>}
-              </motion.button>
-            </div>
+              <button type="submit" className="btn-gold w-100" disabled={loading}>
+                <Send size={16} />
+                <span>{loading ? "Transmitting Ticket..." : "Submit Ticket"}</span>
+              </button>
+            </form>
           </div>
+        </div>
 
-          {/* RIGHT: HISTORY SIDE */}
-          <div className="col-lg-7 col-xl-8">
-            <div className="luxury-card h-100 p-4">
-              <div className="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-glass">
-                <h5 className="fw-900 text-gradient mb-0 d-flex align-items-center gap-3">
-                  <Users size={24} className="text-primary" />
-                  Society Community Feed
-                </h5>
-                <span className="pill-blue">{complaints.length} Total Issues</span>
+        {/* Existing Tickets Feed */}
+        <div className="col-lg-7">
+          <div className="app-card">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+              <div className="d-flex align-items-center gap-2">
+                <MessageSquare size={20} style={{ color: "var(--primary)" }} />
+                <h5 style={{ margin: 0, fontWeight: 600 }}>Active Ticket Feed</h5>
               </div>
 
-              <div className="custom-scrollbar pe-2" style={{maxHeight: '600px', overflowY: 'auto'}}>
-                {complaints.length === 0 ? (
-                  <div className="text-center py-5 opacity-50">
-                    <MessageSquare size={64} className="mb-4 text-primary" />
-                    <h5 className="fw-900">Digital Silence</h5>
-                    <p className="extra-small text-uppercase letter-spacing-1">No active support tickets found</p>
-                  </div>
-                ) : (
-                  <div className="d-flex flex-column gap-3">
-                    {complaints.map((c:any, index:number)=>(
-                      <motion.div
-                        key={c._id}
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="ticket-card-blue"
-                      >
-                        <div className="d-flex justify-content-between align-items-start mb-3">
-                          <div className="d-flex flex-wrap gap-2 align-items-center">
-                            <span className="pill-category">{c.category}</span>
-                            <div className="d-flex align-items-center gap-2 text-primary extra-small fw-900 uppercase">
-                               <User size={12} /> {c.userId?.name || "Member"}
-                            </div>
-                            <div className="d-flex align-items-center gap-2 text-muted extra-small fw-900 uppercase">
-                               <Home size={12} /> {c.userId?.flatNo || "N/A"}
-                            </div>
-                          </div>
-                          <StatusBadge status={c.status}/>
-                        </div>
-                        
-                        <p className="mb-2 text-secondary small fw-medium">
-                          {c.message}
-                        </p>
-
-                        <div className="d-flex align-items-center gap-2 text-muted mt-2" style={{fontSize: '0.65rem'}}>
-                           <Clock size={10} />
-                           <span className="fw-800 uppercase letter-spacing-1">Reported: {new Date(c.createdAt).toLocaleDateString()} at {new Date(c.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
+              {/* Category Filter */}
+              <div className="d-flex align-items-center gap-2">
+                <Filter size={14} style={{ color: "var(--text-muted)" }} />
+                <select
+                  className="form-select-v3"
+                  style={{ minHeight: "36px", padding: "4px 10px", fontSize: "var(--text-xs)", width: "auto" }}
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                >
+                  <option value="All">All Categories</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {filtered.length > 0 ? (
+              <div className="d-flex flex-column gap-3">
+                {filtered.map((item) => {
+                  const isResolved = item.status === "Resolved" || item.status === "Closed";
+                  const isInProgress = item.status === "In Progress";
+                  return (
+                    <div
+                      key={item._id}
+                      style={{
+                        padding: "var(--space-4)",
+                        backgroundColor: "var(--bg-canvas)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-md)",
+                      }}
+                    >
+                      <div className="d-flex align-items-center justify-content-between mb-2">
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "var(--text-sm)",
+                            color: "var(--text-primary)",
+                          }}
+                        >
+                          {item.category}
+                        </span>
+                        <span
+                          className={`badge-v3 ${
+                            isResolved
+                              ? "badge-success"
+                              : isInProgress
+                              ? "badge-info"
+                              : "badge-warning"
+                          }`}
+                        >
+                          {isResolved ? <CheckCircle size={12} /> : <Clock size={12} />}
+                          <span>{item.status || "Open"}</span>
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          fontSize: "var(--text-sm)",
+                          color: "var(--text-secondary)",
+                          margin: "0 0 var(--space-2) 0",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {item.description || (item as any).message || "No description provided."}
+                      </p>
+                      <span
+                        style={{
+                          fontSize: "var(--text-xs)",
+                          color: "var(--text-muted)",
+                          display: "block",
+                        }}
+                      >
+                        Logged on {formatDate(item.createdAt)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-5" style={{ color: "var(--text-muted)" }}>
+                <Inbox size={40} className="mx-auto mb-2 opacity-40" />
+                <h6 style={{ color: "var(--text-primary)", marginBottom: "4px" }}>
+                  Zero Outstanding Tickets
+                </h6>
+                <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>
+                  No complaints registered under category '{filterCategory}'.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
-    </motion.div>
-  );
-};
-
-const StatusBadge = ({status}:{status:string}) => {
-  const configs:any = {
-    Pending: { className: "status-pill-amber", icon: <Clock size={14}/> },
-    "In Progress": { className: "status-pill-blue", icon: <AlertCircle size={14}/> },
-    Resolved: { className: "status-pill-green", icon: <CheckCircle size={14}/> }
-  };
-  const config = configs[status] || configs.Pending;
-
-  return (
-    <div className={`status-badge-modern ${config.className}`}>
-      {config.icon}
-      <span className="text-uppercase letter-spacing-1 extra-small">{status}</span>
     </div>
   );
 };
 
-export default Complaint;
+export default ComplaintPage;

@@ -2,38 +2,21 @@ import API_BASE_URL from "../config/api";
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { Download, FileText, Calendar, Building, CheckCircle, PieChart, TrendingUp, TrendingDown } from "lucide-react";
+import { Download, FileText, Calendar, Building, CheckCircle, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 
-interface UserType {
-  name: string;
-  flatNo: string;
-}
-
-interface MaintenanceType {
-  _id: string;
-  amount: number;
-  month: string;
-  status: string;
-  userId: UserType;
-}
-
-interface ExpenseType {
-  _id: string;
-  title: string;
-  amount: number;
-  date: string;
-  category?: string;
-}
+interface UserType { name: string; flatNo: string }
+interface MaintenanceType { _id: string; amount: number; month: string; status: string; userId: UserType }
+interface ExpenseType { _id: string; title: string; amount: number; date: string; category?: string }
 
 const Reports: React.FC = () => {
   const [maintenance, setMaintenance] = useState<MaintenanceType[]>([]);
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [info, setInfo] = useState("");
+  const [toast, setToast] = useState("");
 
   const token = localStorage.getItem("token");
 
@@ -42,12 +25,12 @@ const Reports: React.FC = () => {
       try {
         const [mntRes, expRes] = await Promise.all([
           axios.get(`${API_BASE_URL}/maintenance?all=true`, { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${API_BASE_URL}/expense`, { headers: { Authorization: `Bearer ${token}` } })
+          axios.get(`${API_BASE_URL}/expense`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
         setMaintenance(mntRes.data);
         setExpenses(expRes.data);
       } catch (err) {
-        console.error("Fetch error", err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -57,402 +40,400 @@ const Reports: React.FC = () => {
 
   useEffect(() => {
     if ((maintenance.length > 0 || expenses.length > 0) && !selectedMonth) {
-      const allMonths = [
-        ...maintenance.map(m => standardizeMonthFormat(m.month)),
-        ...expenses.map(e => standardizeMonthFormat(typeof e.date === 'string' ? e.date.substring(0, 7) : e.date))
+      const months = [
+        ...maintenance.map((m) => stdMonth(m.month)),
+        ...expenses.map((e) => stdMonth(e.date?.substring(0, 7) || "")),
       ].filter(Boolean);
-      const uniqueMonths = Array.from(new Set(allMonths)).sort().reverse();
-      if (uniqueMonths.length > 0) setSelectedMonth(uniqueMonths[0]);
+      const unique = Array.from(new Set(months)).sort().reverse();
+      if (unique.length > 0) setSelectedMonth(unique[0]);
     }
   }, [maintenance, expenses, selectedMonth]);
 
-  const standardizeMonthFormat = (mString: string) => {
-    if (!mString) return "";
-    if (mString.includes("-")) return mString;
-    const parsed = new Date(`${mString} 1`);
-    if (!isNaN(parsed.getTime())) {
-      const mm = (parsed.getMonth() + 1).toString().padStart(2, '0');
-      return `${parsed.getFullYear()}-${mm}`;
-    }
-    return mString;
+  const stdMonth = (s: string) => {
+    if (!s) return "";
+    if (s.includes("-")) return s.substring(0, 7);
+    const p = new Date(`${s} 1`);
+    if (!isNaN(p.getTime())) return `${p.getFullYear()}-${String(p.getMonth() + 1).padStart(2, "0")}`;
+    return s;
   };
 
-  const formatMonthDisplay = (mString: string) => {
-    if (!mString) return "";
-    if (mString.match(/^\d{4}-\d{2}$/)) {
-      const [y, m] = mString.split("-");
-      const d = new Date(parseInt(y), parseInt(m) - 1);
-      return `${d.toLocaleString('default', { month: 'long' })} ${y}`;
-    }
-    return mString;
+  const fmtMonth = (s: string) => {
+    if (!s) return "";
+    const [y, m] = s.split("-");
+    const d = new Date(parseInt(y), parseInt(m) - 1);
+    return d.toLocaleString("default", { month: "long", year: "numeric" });
   };
 
-  const getAvailableMonths = () => {
-    const allMonths = [
-      ...maintenance.map(m => standardizeMonthFormat(m.month)),
-      ...expenses.map(e => standardizeMonthFormat(typeof e.date === 'string' ? e.date.substring(0, 7) : e.date))
-    ].filter(Boolean);
-    return Array.from(new Set(allMonths)).sort().reverse();
-  };
+  const availableMonths = Array.from(
+    new Set([
+      ...maintenance.map((m) => stdMonth(m.month)),
+      ...expenses.map((e) => stdMonth(e.date?.substring(0, 7) || "")),
+    ].filter(Boolean))
+  ).sort().reverse();
 
-  // Get filtered data for selected month (all blocks combined)
   const getMonthlyData = () => {
-    const activeMonthFormat = standardizeMonthFormat(selectedMonth);
     const monthlyIncome = maintenance
-      .filter(m => m.month === selectedMonth && m.status === "Paid")
-      .sort((a, b) => {
-        const flatA = a.userId?.flatNo || "";
-        const flatB = b.userId?.flatNo || "";
-        return flatA.localeCompare(flatB, undefined, { numeric: true });
-      });
-    const monthlyExpenses = expenses.filter(exp => {
-      if (!exp.date) return false;
-      const d = new Date(exp.date);
-      const mm = (d.getMonth() + 1).toString().padStart(2, '0');
-      const expMonth = `${d.getFullYear()}-${mm}`;
-      return expMonth === activeMonthFormat;
+      .filter((m) => stdMonth(m.month) === selectedMonth && m.status === "Paid")
+      .sort((a, b) => (a.userId?.flatNo || "").localeCompare(b.userId?.flatNo || "", undefined, { numeric: true }));
+    const monthlyExpenses = expenses.filter((e) => {
+      if (!e.date) return false;
+      return e.date.substring(0, 7) === selectedMonth;
     });
-    const totalIncome = monthlyIncome.reduce((sum, m) => sum + m.amount, 0);
-    const totalExpense = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalIncome = monthlyIncome.reduce((s, m) => s + m.amount, 0);
+    const totalExpense = monthlyExpenses.reduce((s, e) => s + e.amount, 0);
     return { monthlyIncome, monthlyExpenses, totalIncome, totalExpense, balance: totalIncome - totalExpense };
   };
 
-  const generateReport = (format: "PDF" | "EXCEL") => {
-    if (!selectedMonth) return setInfo("Please select a month for the report.");
+  const notify = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  const generatePDF = () => {
+    if (!selectedMonth) return notify("Select a month first");
     const { monthlyIncome, monthlyExpenses, totalIncome, totalExpense, balance } = getMonthlyData();
-    if (format === "PDF") generatePDF(monthlyIncome, monthlyExpenses, totalIncome, totalExpense, balance);
-    else generateExcel(monthlyIncome, monthlyExpenses, totalIncome, totalExpense, balance);
-  };
-
-  const generatePDF = (incomeData: MaintenanceType[], expenseData: ExpenseType[], totalIncome: number, totalExpense: number, balance: number) => {
     const doc = new jsPDF();
-    const monthLabel = formatMonthDisplay(selectedMonth);
-
-    // Header
-    doc.setFillColor(37, 99, 235);
-    doc.rect(0, 0, 210, 35, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(18);
+    doc.setFillColor(11, 27, 58);
+    doc.rect(0, 0, 210, 36, "F");
+    doc.setTextColor(201, 162, 75);
+    doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
-    doc.text("SHREE GIFT CITY", 14, 16);
-    doc.setFontSize(11);
+    doc.text("SHREE HARI GIFT CITY", 14, 16);
+    doc.setTextColor(246, 243, 236);
+    doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`Monthly Financial Report — ${monthLabel}`, 14, 26);
+    doc.text(`Monthly Financial Report — ${fmtMonth(selectedMonth)}`, 14, 26);
+    doc.text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 14, 32);
 
-    // Summary Boxes
-    const summaryY = 45;
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-
-    doc.setFillColor(236, 253, 245);
-    doc.roundedRect(14, summaryY, 55, 22, 3, 3, "F");
-    doc.setTextColor(16, 185, 129);
-    doc.text("TOTAL INCOME", 18, summaryY + 8);
-    doc.setFontSize(13);
-    doc.text(`Rs. ${totalIncome.toLocaleString()}`, 18, summaryY + 18);
-
-    doc.setFillColor(254, 242, 242);
-    doc.roundedRect(75, summaryY, 55, 22, 3, 3, "F");
-    doc.setTextColor(244, 63, 94);
-    doc.setFontSize(10);
-    doc.text("TOTAL EXPENSE", 79, summaryY + 8);
-    doc.setFontSize(13);
-    doc.text(`Rs. ${totalExpense.toLocaleString()}`, 79, summaryY + 18);
-
-    doc.setFillColor(balance >= 0 ? 219 : 254, balance >= 0 ? 234 : 202, balance >= 0 ? 254 : 202);
-    doc.roundedRect(136, summaryY, 60, 22, 3, 3, "F");
-    doc.setTextColor(balance >= 0 ? 109 : 220, balance >= 0 ? 40 : 38, balance >= 0 ? 217 : 38);
-    doc.setFontSize(10);
-    doc.text("NET BALANCE", 140, summaryY + 8);
-    doc.setFontSize(13);
-    doc.text(`Rs. ${balance.toLocaleString()}`, 140, summaryY + 18);
-
-    // Income Table
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text("INCOME — Maintenance Collected", 14, 80);
-
-    const incomeRows = incomeData.map(inc => [
-      inc.userId?.flatNo || "-",
-      inc.userId?.name || "-",
-      `Rs. ${inc.amount.toLocaleString()}`
-    ]);
-    incomeRows.push(["", "TOTAL INCOME", `Rs. ${totalIncome.toLocaleString()}`]);
-
-    autoTable(doc, {
-      startY: 84,
-      head: [["Flat No", "Resident Name", "Amount"]],
-      body: incomeRows,
-      theme: 'grid',
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: 'bold' },
-      footStyles: { fontStyle: 'bold' },
+    // Summary
+    const sy = 44;
+    const boxes = [
+      { label: "INCOME", value: totalIncome, fillColor: [221, 243, 228] as [number,number,number], textColor: [20, 98, 58] as [number,number,number] },
+      { label: "EXPENSE", value: totalExpense, fillColor: [251, 225, 228] as [number,number,number], textColor: [163, 34, 51] as [number,number,number] },
+      { label: "BALANCE", value: balance, fillColor: balance >= 0 ? [221, 243, 228] as [number,number,number] : [251, 225, 228] as [number,number,number], textColor: balance >= 0 ? [20, 98, 58] as [number,number,number] : [163, 34, 51] as [number,number,number] },
+    ];
+    boxes.forEach((box, i) => {
+      doc.setFillColor(...box.fillColor);
+      doc.roundedRect(14 + i * 65, sy, 60, 20, 3, 3, "F");
+      doc.setTextColor(...box.textColor);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.text(box.label, 18 + i * 65, sy + 7);
+      doc.setFontSize(12);
+      doc.text(`₹${box.value.toLocaleString("en-IN")}`, 18 + i * 65, sy + 16);
     });
 
-    // Expense Table
-    const expStartY = (doc as any).lastAutoTable.finalY + 12;
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text("EXPENSES", 14, expStartY);
-
-    const expenseRows = expenseData.map(exp => [
-      new Date(exp.date).toLocaleDateString('en-IN'),
-      exp.title,
-      exp.category || "-",
-      `Rs. ${exp.amount.toLocaleString()}`
-    ]);
-    expenseRows.push(["", "", "TOTAL EXPENSE", `Rs. ${totalExpense.toLocaleString()}`]);
-    expenseRows.push(["", "", "NET BALANCE", `Rs. ${balance.toLocaleString()}`]);
-
     autoTable(doc, {
-      startY: expStartY + 4,
+      startY: sy + 28,
+      head: [["Flat", "Resident", "Amount"]],
+      body: [
+        ...monthlyIncome.map((m) => [m.userId?.flatNo || "-", m.userId?.name || "-", `₹${m.amount.toLocaleString("en-IN")}`]),
+        ["", "TOTAL INCOME", `₹${totalIncome.toLocaleString("en-IN")}`],
+      ],
+      headStyles: { fillColor: [20, 98, 58], textColor: [255, 255, 255] },
+      styles: { fontSize: 9 },
+    });
+
+    const expStart = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Expenses", 14, expStart);
+    autoTable(doc, {
+      startY: expStart + 4,
       head: [["Date", "Description", "Category", "Amount"]],
-      body: expenseRows,
-      theme: 'grid',
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [244, 63, 94], textColor: [255, 255, 255], fontStyle: 'bold' },
+      body: [
+        ...monthlyExpenses.map((e) => [new Date(e.date).toLocaleDateString("en-IN"), e.title, e.category || "-", `₹${e.amount.toLocaleString("en-IN")}`]),
+        ["", "", "TOTAL EXPENSE", `₹${totalExpense.toLocaleString("en-IN")}`],
+        ["", "", "NET BALANCE", `₹${balance.toLocaleString("en-IN")}`],
+      ],
+      headStyles: { fillColor: [163, 34, 51], textColor: [255, 255, 255] },
+      styles: { fontSize: 9 },
     });
-
-    // Footer
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text(`Generated on ${new Date().toLocaleString('en-IN')} • SHREE GIFT CITY`, 14, 287);
 
     doc.save(`SHREE_GIFT_CITY_Report_${selectedMonth}.pdf`);
-    setInfo("PDF Report Downloaded Successfully!");
-    setTimeout(() => setInfo(""), 3000);
+    notify("PDF downloaded");
   };
 
-  const generateExcel = (incomeData: MaintenanceType[], expenseData: ExpenseType[], totalIncome: number, totalExpense: number, balance: number) => {
+  const generateExcel = () => {
+    if (!selectedMonth) return notify("Select a month first");
+    const { monthlyIncome, monthlyExpenses, totalIncome, totalExpense, balance } = getMonthlyData();
     const wb = XLSX.utils.book_new();
-    const monthLabel = formatMonthDisplay(selectedMonth);
-    const aoaData: any[][] = [];
-
-    aoaData.push(["SHREE GIFT CITY — Monthly Financial Report"]);
-    aoaData.push([`Period: ${monthLabel}`]);
-    aoaData.push([]);
-    aoaData.push(["SUMMARY"]);
-    aoaData.push(["Total Income", `Rs. ${totalIncome}`, "Total Expense", `Rs. ${totalExpense}`, "Net Balance", `Rs. ${balance}`]);
-    aoaData.push([]);
-    aoaData.push(["INCOME — Maintenance Collected"]);
-    aoaData.push(["Flat No", "Resident Name", "Amount (Rs.)"]);
-    incomeData.forEach(inc => {
-      aoaData.push([inc.userId?.flatNo || "-", inc.userId?.name || "-", inc.amount]);
-    });
-    aoaData.push(["", "TOTAL INCOME", totalIncome]);
-    aoaData.push([]);
-    aoaData.push([]);
-    aoaData.push(["EXPENSES"]);
-    aoaData.push(["Date", "Description", "Category", "Amount (Rs.)"]);
-    expenseData.forEach(exp => {
-      aoaData.push([new Date(exp.date).toLocaleDateString('en-IN'), exp.title, exp.category || "-", exp.amount]);
-    });
-    aoaData.push(["", "", "TOTAL EXPENSE", totalExpense]);
-    aoaData.push(["", "", "NET BALANCE", balance]);
-
-    const ws = XLSX.utils.aoa_to_sheet(aoaData);
-    ws["!merges"] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+    const aoa: any[][] = [
+      [`SHREE HARI GIFT CITY — Monthly Report: ${fmtMonth(selectedMonth)}`],
+      [],
+      ["SUMMARY"],
+      ["Total Income", `₹${totalIncome}`, "Total Expense", `₹${totalExpense}`, "Net Balance", `₹${balance}`],
+      [],
+      ["INCOME"],
+      ["Flat", "Resident", "Amount"],
+      ...monthlyIncome.map((m) => [m.userId?.flatNo || "-", m.userId?.name || "-", m.amount]),
+      ["", "TOTAL INCOME", totalIncome],
+      [],
+      ["EXPENSES"],
+      ["Date", "Description", "Category", "Amount"],
+      ...monthlyExpenses.map((e) => [new Date(e.date).toLocaleDateString("en-IN"), e.title, e.category || "-", e.amount]),
+      ["", "", "TOTAL EXPENSE", totalExpense],
+      ["", "", "NET BALANCE", balance],
     ];
-    XLSX.utils.book_append_sheet(wb, ws, "Monthly Report");
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb, ws, "Report");
     XLSX.writeFile(wb, `SHREE_GIFT_CITY_Report_${selectedMonth}.xlsx`);
-    setInfo("Excel Report Downloaded Successfully!");
-    setTimeout(() => setInfo(""), 3000);
+    notify("Excel downloaded");
   };
 
-  const { totalIncome, totalExpense, balance, monthlyIncome, monthlyExpenses } = selectedMonth
-    ? getMonthlyData()
-    : { totalIncome: 0, totalExpense: 0, balance: 0, monthlyIncome: [], monthlyExpenses: [] };
+  const { totalIncome, totalExpense, balance, monthlyIncome, monthlyExpenses } =
+    selectedMonth ? getMonthlyData() : { totalIncome: 0, totalExpense: 0, balance: 0, monthlyIncome: [], monthlyExpenses: [] };
+
+  const statCardBase: React.CSSProperties = {
+    padding: "var(--space-5)",
+    borderRadius: "var(--radius-lg)",
+    textAlign: "center",
+    flex: "1 1 140px",
+  };
+
+  const thStyle: React.CSSProperties = {
+    padding: "var(--space-3) var(--space-4)",
+    textAlign: "left",
+    fontSize: "var(--text-xs)",
+    fontWeight: "var(--weight-semibold)",
+    color: "var(--text-muted)",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    background: "var(--bg-canvas)",
+    borderBottom: "1px solid var(--border)",
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: "var(--space-3) var(--space-4)",
+    fontSize: "var(--text-sm)",
+    color: "var(--text-secondary)",
+    borderBottom: "1px solid var(--border)",
+  };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
-      <div className="container-fluid px-md-4 py-4">
-
-        {/* HEADER */}
-        <div className="mb-5 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4">
-          <div className="d-flex align-items-center gap-4">
-            <div className="icon-badge-blue">
-              <PieChart size={32} />
-            </div>
-            <div>
-              <h1 className="fw-900 text-gradient mb-1">SHREE GIFT CITY Monthly Report</h1>
-              <p className="text-secondary small fw-800 text-uppercase letter-spacing-1">Income & Expense — PDF & Excel</p>
-            </div>
-          </div>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="main-content"
+      style={{ padding: "var(--space-6)" }}
+    >
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", marginBottom: "var(--space-6)" }}>
+        <div
+          style={{
+            width: 48, height: 48, borderRadius: "var(--radius-md)",
+            background: "var(--accent-light)", display: "flex", alignItems: "center",
+            justifyContent: "center", color: "var(--accent-text)",
+          }}
+        >
+          <FileText size={24} />
         </div>
+        <div>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)", marginBottom: 2 }}>
+            Monthly Reports
+          </h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", margin: 0 }}>
+            Income & expense — PDF & Excel export
+          </p>
+        </div>
+      </div>
 
-        {info && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="custom-alert alert-minimal-blue mb-4">
-            <CheckCircle size={20} className="me-2" /> <span className="fw-800 text-uppercase small">{info}</span>
-          </motion.div>
-        )}
+      {toast && (
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", padding: "var(--space-3) var(--space-5)", borderRadius: "var(--radius-md)", background: "var(--success-bg)", color: "var(--success)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", marginBottom: "var(--space-4)", border: "1px solid var(--success)" }}>
+          <CheckCircle size={18} /> {toast}
+        </div>
+      )}
 
-        {/* MONTH SELECTOR */}
-        <div className="row g-4 mb-4">
-          <div className="col-12 col-md-5">
-            <div className="luxury-card p-4 bg-white border-0 shadow-sm">
-              <h5 className="fw-900 text-black mb-3 d-flex align-items-center gap-2 text-uppercase letter-spacing-1">
-                <Calendar size={20} className="text-primary" /> Select Report Period
-              </h5>
-              <select
-                className="modern-select w-100 py-3 rounded-3"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-              >
-                <option value="">Choose Month</option>
-                {getAvailableMonths().map(m => (
-                  <option key={m} value={m}>{formatMonthDisplay(m)}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* SUMMARY CARDS */}
-          {selectedMonth && (
-            <div className="col-12 col-md-7">
-              <div className="luxury-card p-4 bg-white border-0 shadow-sm h-100">
-                <h5 className="fw-900 text-black mb-3 text-uppercase letter-spacing-1">Summary — {formatMonthDisplay(selectedMonth)}</h5>
-                <div className="row g-3">
-                  <div className="col-4">
-                    <div className="p-3 rounded-3 text-center" style={{ background: '#ecfdf5' }}>
-                      <TrendingUp size={20} className="text-success mb-1" />
-                      <p className="extra-small fw-900 text-muted text-uppercase mb-1">Income</p>
-                      <p className="fw-900 text-success mb-0">₹{totalIncome.toLocaleString()}</p>
-                    </div>
-                  </div>
-                  <div className="col-4">
-                    <div className="p-3 rounded-3 text-center" style={{ background: '#fef2f2' }}>
-                      <TrendingDown size={20} className="text-danger mb-1" />
-                      <p className="extra-small fw-900 text-muted text-uppercase mb-1">Expense</p>
-                      <p className="fw-900 text-danger mb-0">₹{totalExpense.toLocaleString()}</p>
-                    </div>
-                  </div>
-                  <div className="col-4">
-                    <div className="p-3 rounded-3 text-center" style={{ background: balance >= 0 ? '#ede9fe' : '#fef2f2' }}>
-                      <Building size={20} style={{ color: balance >= 0 ? '#7c3aed' : '#ef4444' }} className="mb-1" />
-                      <p className="extra-small fw-900 text-muted text-uppercase mb-1">Balance</p>
-                      <p className="fw-900 mb-0" style={{ color: balance >= 0 ? '#7c3aed' : '#ef4444' }}>₹{balance.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* ── Month Selector + Summary ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "var(--space-5)", marginBottom: "var(--space-6)", flexWrap: "wrap" }}>
+        {/* Selector */}
+        <div className="app-card" style={{ padding: "var(--space-5)" }}>
+          <label style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "var(--space-3)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            <Calendar size={14} /> Select Period
+          </label>
+          {loading ? (
+            <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
+          ) : (
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "var(--space-3) var(--space-4)",
+                border: "1.5px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "var(--text-base)",
+                color: "var(--text-primary)",
+                background: "var(--bg-canvas)",
+                outline: "none",
+              }}
+            >
+              <option value="">Choose month…</option>
+              {availableMonths.map((m) => (
+                <option key={m} value={m}>{fmtMonth(m)}</option>
+              ))}
+            </select>
           )}
         </div>
 
-        {/* UNIFIED REPORT CARD */}
-        <div className="row g-4 mb-4">
-          <div className="col-12">
-            <div className="luxury-card p-5 bg-white border-0 shadow-sm border-bottom border-primary border-4">
-              <div className="d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
-                <div className="d-flex align-items-center gap-4">
-                  <div className="bg-primary bg-opacity-10 text-primary p-3 rounded-4" style={{ width: '70px', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Building size={36} />
-                  </div>
-                  <div>
-                    <h3 className="fw-900 text-black text-uppercase letter-spacing-1 mb-1">SHREE GIFT CITY — All Blocks</h3>
-                    <p className="text-muted extra-small fw-800 uppercase letter-spacing-2 mb-0">
-                      {selectedMonth ? `${monthlyIncome.length} paid residents · ${monthlyExpenses.length} expenses` : "Select a month to preview data"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="d-flex gap-3">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                    className="btn-light border-1 px-5 py-3 rounded-3 fw-900 text-primary d-flex align-items-center gap-2"
-                    onClick={() => generateReport("PDF")}
-                    disabled={!selectedMonth}
-                  >
-                    <FileText size={20} /> Download PDF
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                    className="btn-light border-1 px-5 py-3 rounded-3 fw-900 text-success d-flex align-items-center gap-2"
-                    onClick={() => generateReport("EXCEL")}
-                    disabled={!selectedMonth}
-                  >
-                    <Download size={20} /> Download Excel
-                  </motion.button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* PREVIEW TABLES */}
+        {/* Summary Stats */}
         {selectedMonth && (
-          <div className="row g-4">
-            <div className="col-lg-7">
-              <div className="luxury-card p-4 bg-white border-0 shadow-sm">
-                <h6 className="fw-900 text-uppercase letter-spacing-1 text-success mb-3 d-flex align-items-center gap-2">
-                  <TrendingUp size={16} /> Income ({monthlyIncome.length} records)
-                </h6>
-                {monthlyIncome.length === 0 ? (
-                  <p className="text-muted text-center py-3 fw-800 extra-small">No paid records for this month</p>
-                ) : (
-                  <div className="table-responsive">
-                    <table className="table table-sm mb-0">
-                      <thead><tr><th className="extra-small fw-900 text-muted text-uppercase">Flat</th><th className="extra-small fw-900 text-muted text-uppercase">Name</th><th className="extra-small fw-900 text-muted text-uppercase text-end">Amount</th></tr></thead>
-                      <tbody>
-                        {monthlyIncome.map(m => (
-                          <tr key={m._id}>
-                            <td className="fw-800 small">{m.userId?.flatNo}</td>
-                            <td className="fw-800 small">{m.userId?.name}</td>
-                            <td className="fw-900 small text-end text-success">₹{m.amount.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                        <tr className="table-success">
-                          <td colSpan={2} className="fw-900 small text-uppercase">Total Income</td>
-                          <td className="fw-900 small text-end text-success">₹{totalIncome.toLocaleString()}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+          <div className="app-card" style={{ padding: "var(--space-5)" }}>
+            <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "var(--space-4)" }}>
+              Summary — {fmtMonth(selectedMonth)}
             </div>
-
-            <div className="col-lg-5">
-              <div className="luxury-card p-4 bg-white border-0 shadow-sm">
-                <h6 className="fw-900 text-uppercase letter-spacing-1 text-danger mb-3 d-flex align-items-center gap-2">
-                  <TrendingDown size={16} /> Expenses ({monthlyExpenses.length} records)
-                </h6>
-                {monthlyExpenses.length === 0 ? (
-                  <p className="text-muted text-center py-3 fw-800 extra-small">No expenses for this month</p>
-                ) : (
-                  <div className="table-responsive">
-                    <table className="table table-sm mb-0">
-                      <thead><tr><th className="extra-small fw-900 text-muted text-uppercase">Description</th><th className="extra-small fw-900 text-muted text-uppercase text-end">Amount</th></tr></thead>
-                      <tbody>
-                        {monthlyExpenses.map(e => (
-                          <tr key={e._id}>
-                            <td className="fw-800 small">{e.title}</td>
-                            <td className="fw-900 small text-end text-danger">₹{e.amount.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                        <tr className="table-danger">
-                          <td className="fw-900 small text-uppercase">Total Expense</td>
-                          <td className="fw-900 small text-end text-danger">₹{totalExpense.toLocaleString()}</td>
-                        </tr>
-                        <tr className="table-secondary">
-                          <td className="fw-900 small text-uppercase">Net Balance</td>
-                          <td className={`fw-900 small text-end ${balance >= 0 ? 'text-success' : 'text-danger'}`}>₹{balance.toLocaleString()}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+            <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>
+              <div style={{ ...statCardBase, background: "var(--success-bg)" }}>
+                <TrendingUp size={18} style={{ color: "var(--success)", marginBottom: "var(--space-2)" }} />
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--success)", fontWeight: "var(--weight-semibold)", marginBottom: "var(--space-1)" }}>Income</div>
+                <div style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-bold)", color: "var(--success)" }}>₹{totalIncome.toLocaleString("en-IN")}</div>
+              </div>
+              <div style={{ ...statCardBase, background: "var(--danger-bg)" }}>
+                <TrendingDown size={18} style={{ color: "var(--danger)", marginBottom: "var(--space-2)" }} />
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--danger)", fontWeight: "var(--weight-semibold)", marginBottom: "var(--space-1)" }}>Expense</div>
+                <div style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-bold)", color: "var(--danger)" }}>₹{totalExpense.toLocaleString("en-IN")}</div>
+              </div>
+              <div style={{ ...statCardBase, background: balance >= 0 ? "var(--success-bg)" : "var(--danger-bg)" }}>
+                <Building size={18} style={{ color: balance >= 0 ? "var(--success)" : "var(--danger)", marginBottom: "var(--space-2)" }} />
+                <div style={{ fontSize: "var(--text-xs)", color: balance >= 0 ? "var(--success)" : "var(--danger)", fontWeight: "var(--weight-semibold)", marginBottom: "var(--space-1)" }}>Balance</div>
+                <div style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-bold)", color: balance >= 0 ? "var(--success)" : "var(--danger)" }}>₹{balance.toLocaleString("en-IN")}</div>
               </div>
             </div>
           </div>
         )}
-
       </div>
+
+      {/* ── Download Card ── */}
+      {selectedMonth && (
+        <div
+          className="app-card"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "var(--space-4)",
+            padding: "var(--space-5) var(--space-6)",
+            marginBottom: "var(--space-6)",
+            borderLeft: "4px solid var(--accent)",
+          }}
+        >
+          <div>
+            <h5 style={{ fontWeight: "var(--weight-semibold)", marginBottom: 4 }}>
+              Shree Hari Gift City — {fmtMonth(selectedMonth)}
+            </h5>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", margin: 0 }}>
+              {monthlyIncome.length} paid residents · {monthlyExpenses.length} expense records
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "var(--space-3)" }}>
+            <button onClick={generatePDF} className="btn-gold" style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <FileText size={16} /> PDF
+            </button>
+            <button onClick={generateExcel} className="btn-outline-gold" style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <Download size={16} /> Excel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Preview Tables ── */}
+      {selectedMonth && (
+        <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: "var(--space-5)" }}>
+          {/* Income table */}
+          <div className="app-card" style={{ overflow: "hidden", padding: 0 }}>
+            <div style={{ padding: "var(--space-4) var(--space-5)", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <TrendingUp size={16} style={{ color: "var(--success)" }} />
+              <h6 style={{ margin: 0, fontWeight: "var(--weight-semibold)" }}>Income — {monthlyIncome.length} paid</h6>
+            </div>
+            {monthlyIncome.length === 0 ? (
+              <p style={{ textAlign: "center", color: "var(--text-muted)", padding: "var(--space-8)", fontSize: "var(--text-sm)" }}>
+                No paid records for this month
+              </p>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Flat</th>
+                    <th style={thStyle}>Resident</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyIncome.map((m) => (
+                    <tr key={m._id}>
+                      <td style={tdStyle}>{m.userId?.flatNo}</td>
+                      <td style={tdStyle}>{m.userId?.name}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: "var(--weight-semibold)", color: "var(--success)" }}>
+                        ₹{m.amount.toLocaleString("en-IN")}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: "var(--success-bg)" }}>
+                    <td colSpan={2} style={{ ...tdStyle, fontWeight: "var(--weight-bold)", color: "var(--success)" }}>Total Income</td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: "var(--weight-bold)", color: "var(--success)" }}>
+                      ₹{totalIncome.toLocaleString("en-IN")}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Expense table */}
+          <div className="app-card" style={{ overflow: "hidden", padding: 0 }}>
+            <div style={{ padding: "var(--space-4) var(--space-5)", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <TrendingDown size={16} style={{ color: "var(--danger)" }} />
+              <h6 style={{ margin: 0, fontWeight: "var(--weight-semibold)" }}>Expenses — {monthlyExpenses.length} records</h6>
+            </div>
+            {monthlyExpenses.length === 0 ? (
+              <p style={{ textAlign: "center", color: "var(--text-muted)", padding: "var(--space-8)", fontSize: "var(--text-sm)" }}>
+                No expenses this month
+              </p>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Description</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyExpenses.map((e) => (
+                    <tr key={e._id}>
+                      <td style={tdStyle}>{e.title}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: "var(--weight-semibold)", color: "var(--danger)" }}>
+                        ₹{e.amount.toLocaleString("en-IN")}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: "var(--danger-bg)" }}>
+                    <td style={{ ...tdStyle, fontWeight: "var(--weight-bold)", color: "var(--danger)" }}>Total Expense</td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: "var(--weight-bold)", color: "var(--danger)" }}>
+                      ₹{totalExpense.toLocaleString("en-IN")}
+                    </td>
+                  </tr>
+                  <tr style={{ background: balance >= 0 ? "var(--success-bg)" : "var(--danger-bg)" }}>
+                    <td style={{ ...tdStyle, fontWeight: "var(--weight-bold)", color: balance >= 0 ? "var(--success)" : "var(--danger)" }}>Net Balance</td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: "var(--weight-bold)", color: balance >= 0 ? "var(--success)" : "var(--danger)" }}>
+                      ₹{balance.toLocaleString("en-IN")}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!selectedMonth && !loading && (
+        <div className="app-card" style={{ textAlign: "center", padding: "var(--space-12) var(--space-6)", color: "var(--text-muted)" }}>
+          <Calendar size={48} style={{ opacity: 0.25, marginBottom: "var(--space-4)" }} />
+          <h5 style={{ fontWeight: "var(--weight-semibold)", marginBottom: "var(--space-2)" }}>Select a month to view data</h5>
+          <p style={{ maxWidth: "none", fontSize: "var(--text-sm)" }}>
+            {availableMonths.length === 0 ? "No data available yet" : `${availableMonths.length} months available`}
+          </p>
+        </div>
+      )}
     </motion.div>
   );
 };

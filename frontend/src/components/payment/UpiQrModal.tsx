@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  X, Smartphone, ShieldCheck, Clock, 
-  CheckCircle, AlertCircle, Loader2, ArrowRight,
-  CreditCard, Search, Copy, Check
+import {
+  X,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Copy,
+  Check,
+  CreditCard,
+  QrCode,
+  ShieldCheck,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
-import axios from "axios";
+import apiClient from "../../api/client";
 import API_BASE_URL from "../../config/api";
-
-// Connect to backend socket
-const socket = io(API_BASE_URL);
+import { formatCurrency } from "../../utils";
 
 interface UpiQrModalProps {
   isOpen: boolean;
@@ -24,9 +28,7 @@ const UpiQrModal: React.FC<UpiQrModalProps> = ({ isOpen, onClose, order, onSucce
   const [timeLeft, setTimeLeft] = useState(300);
   const [status, setStatus] = useState<"pending" | "processing" | "success" | "failed" | "expired">("pending");
   const [copied, setCopied] = useState(false);
-  const token = localStorage.getItem("token");
-
-  console.log("UpiQrModal Render State:", { isOpen, hasOrder: !!order });
+  const [selectedGateway, setSelectedGateway] = useState<"upi" | "razorpay" | "stripe">("upi");
 
   useEffect(() => {
     if (!isOpen || !order) return;
@@ -34,7 +36,7 @@ const UpiQrModal: React.FC<UpiQrModalProps> = ({ isOpen, onClose, order, onSucce
     setStatus("pending");
     setTimeLeft(300);
 
-    // Join room for real-time updates
+    const socket = io(API_BASE_URL, { transports: ["websocket", "polling"] });
     socket.emit("join", order.orderId);
 
     const onPaymentSuccess = (data: any) => {
@@ -43,15 +45,16 @@ const UpiQrModal: React.FC<UpiQrModalProps> = ({ isOpen, onClose, order, onSucce
         setTimeout(() => {
           onSuccess();
           onClose();
-        }, 2000);
+        }, 1800);
       }
     };
 
+    socket.on("payment:success", onPaymentSuccess);
     socket.on("paymentSuccess", onPaymentSuccess);
 
     // Countdown timer
     const timer = setInterval(() => {
-      setTimeLeft(prev => {
+      setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
           setStatus("expired");
@@ -61,29 +64,29 @@ const UpiQrModal: React.FC<UpiQrModalProps> = ({ isOpen, onClose, order, onSucce
       });
     }, 1000);
 
-    // Polling Fallback
+    // Polling fallback
     const poll = setInterval(async () => {
       try {
-        const res = await axios.get(`${API_BASE_URL}/api/payment/status/${order.orderId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await apiClient.get(`/api/payment/status/${order.orderId}`);
         if (res.data.status === "success" && status !== "success") {
-           onPaymentSuccess({ orderId: order.orderId });
+          onPaymentSuccess({ orderId: order.orderId });
         }
-      } catch (err) { console.error("Poll error", err); }
+      } catch (err) {}
     }, 4000);
 
     return () => {
       clearInterval(timer);
       clearInterval(poll);
-      socket.off("paymentSuccess", onPaymentSuccess);
+      socket.disconnect();
     };
   }, [isOpen, order]);
+
+  if (!isOpen || !order) return null;
 
   const formatTime = (seconds: number) => {
     const min = Math.floor(seconds / 60);
     const sec = seconds % 60;
-    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+    return `${min}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
   const handleCopy = () => {
@@ -95,127 +98,251 @@ const UpiQrModal: React.FC<UpiQrModalProps> = ({ isOpen, onClose, order, onSucce
 
   return (
     <AnimatePresence>
-      {isOpen && order && (
-        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-white p-4 rounded-4 shadow-lg text-center relative"
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '400px', width: '90%' }}
+      <div
+        className="modal-backdrop-custom"
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(11, 27, 58, 0.7)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "var(--space-4)",
+          zIndex: 2000,
+        }}
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-lg)",
+            padding: "var(--space-6)",
+            maxWidth: "440px",
+            width: "100%",
+            color: "var(--text-primary)",
+            position: "relative",
+          }}
+        >
+          {/* Header */}
+          <div className="d-flex align-items-center justify-content-between mb-4">
+            <div>
+              <h4 style={{ margin: 0, fontWeight: 700, fontSize: "var(--text-lg)" }}>
+                Maintenance Payment
+              </h4>
+              <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                Billing Cycle: {order.month || "Current Period"}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Close modal"
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+                padding: "6px",
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Dues Breakdown */}
+          <div
+            style={{
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-3) var(--space-4)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "var(--space-4)",
+              fontSize: "var(--text-sm)",
+            }}
           >
-            {/* Breakdown Display */}
-            <div className="mb-4 bg-light p-3 rounded-4 d-flex justify-content-between align-items-center">
-               <div className="text-start">
-                  <p className="m-0 extra-small fw-800 text-muted uppercase">Base Dues</p>
-                  <p className="m-0 fw-900 text-dark">₹{order.baseAmount?.toLocaleString()}</p>
-               </div>
-               <div className="text-center">
-                  <span className="text-muted fw-900">+</span>
-               </div>
-               <div className="text-end">
-                  <p className="m-0 extra-small fw-800 text-muted uppercase">Penalty</p>
-                  <p className={`m-0 fw-900 ${order.penalty > 0 ? 'text-danger' : 'text-dark'}`}>₹{order.penalty?.toLocaleString()}</p>
-               </div>
+            <div>
+              <span style={{ color: "var(--text-secondary)", display: "block", fontSize: "var(--text-xs)" }}>
+                Base Fee
+              </span>
+              <strong className="tabular-nums">{formatCurrency(order.baseAmount || order.amount)}</strong>
             </div>
-
-            <div className="mb-4">
-               <h4 className="fw-900 text-dark mb-0">Scan to Pay ₹{order.amount.toLocaleString()}</h4>
-               <p className="text-muted extra-small fw-900 uppercase tracking-widest">{order.month}</p>
+            {order.penalty > 0 && (
+              <div>
+                <span style={{ color: "var(--danger)", display: "block", fontSize: "var(--text-xs)" }}>
+                  Late Penalty
+                </span>
+                <strong className="tabular-nums" style={{ color: "var(--danger)" }}>
+                  +{formatCurrency(order.penalty)}
+                </strong>
+              </div>
+            )}
+            <div>
+              <span style={{ color: "var(--text-secondary)", display: "block", fontSize: "var(--text-xs)" }}>
+                Total Payable
+              </span>
+              <strong className="tabular-nums" style={{ color: "var(--accent-text)", fontSize: "var(--text-base)" }}>
+                {formatCurrency(order.amount)}
+              </strong>
             </div>
+          </div>
 
-            {/* QR Display */}
-            <div className={`p-3 border rounded-4 bg-white mb-3 relative ${status === 'expired' ? 'opacity-20 grayscale' : ''}`}>
-              {status === 'success' ? (
-                <div className="py-5 text-success flex flex-column items-center">
-                  <CheckCircle size={80} className="mb-3" />
-                  <h3 className="fw-900 uppercase">Payment Success</h3>
+          {/* Gateway Selector Tabs */}
+          <div
+            className="d-flex p-1 mb-4"
+            style={{
+              backgroundColor: "var(--bg-canvas)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              gap: "4px",
+            }}
+          >
+            {[
+              { id: "upi", label: "UPI QR", icon: <QrCode size={16} /> },
+              { id: "razorpay", label: "Cards & NetBanking", icon: <CreditCard size={16} /> },
+            ].map((gw) => (
+              <button
+                key={gw.id}
+                type="button"
+                onClick={() => setSelectedGateway(gw.id as any)}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  padding: "8px 12px",
+                  border: "none",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: selectedGateway === gw.id ? "var(--accent)" : "transparent",
+                  color: selectedGateway === gw.id ? "var(--on-accent)" : "var(--text-secondary)",
+                  fontWeight: selectedGateway === gw.id ? 600 : 500,
+                  fontSize: "var(--text-xs)",
+                  cursor: "pointer",
+                  transition: "all var(--transition-fast)",
+                }}
+              >
+                {gw.icon}
+                <span>{gw.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* QR Display or Card Action */}
+          {status === "success" ? (
+            <div className="py-5 text-center text-success">
+              <CheckCircle size={64} className="mx-auto mb-3" style={{ color: "var(--success)" }} />
+              <h4 style={{ fontWeight: 700, color: "var(--success)", marginBottom: "4px" }}>
+                Payment Confirmed!
+              </h4>
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", margin: 0 }}>
+                Updating maintenance records and generating your receipt...
+              </p>
+            </div>
+          ) : selectedGateway === "upi" ? (
+            <div className="text-center mb-4">
+              <div
+                style={{
+                  display: "inline-block",
+                  padding: "var(--space-3)",
+                  backgroundColor: "#FFFFFF",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "var(--shadow-sm)",
+                  opacity: status === "expired" ? 0.3 : 1,
+                }}
+              >
+                <QRCodeCanvas
+                  value={order.qrCodeUrl || `upi://pay?pa=society@upi&am=${order.amount}`}
+                  size={200}
+                  level="H"
+                  includeMargin={false}
+                />
+              </div>
+
+              {status === "expired" ? (
+                <div className="mt-3 text-danger d-flex align-items-center justify-content-center gap-2">
+                  <AlertCircle size={18} />
+                  <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>
+                    QR Code expired. Please close and re-generate.
+                  </span>
                 </div>
               ) : (
-                <div className="d-flex justify-content-center">
-                  <QRCodeCanvas 
-                    value={order.qrCodeUrl}
-                    size={280}
-                    level="H"
-                    includeMargin={true}
-                  />
-                  {status === 'expired' && (
-                    <div className="position-absolute top-50 start-50 translate-middle text-danger">
-                      <AlertCircle size={48} />
-                      <p className="fw-900 m-0">EXPIRED</p>
-                    </div>
-                  )}
+                <div
+                  className="mt-3 d-flex align-items-center justify-content-center gap-2"
+                  style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}
+                >
+                  <Clock size={16} />
+                  <span>Time remaining:</span>
+                  <strong className="tabular-nums" style={{ color: "var(--text-primary)" }}>
+                    {formatTime(timeLeft)}
+                  </strong>
+                </div>
+              )}
+
+              {/* Copy UPI ID */}
+              {order.upiId && status === "pending" && (
+                <div className="mt-3 d-flex align-items-center justify-content-center gap-2">
+                  <span
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: "var(--text-xs)",
+                      backgroundColor: "var(--bg-canvas)",
+                      padding: "4px 8px",
+                      borderRadius: "var(--radius-sm)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    {order.upiId}
+                  </span>
+                  <button
+                    onClick={handleCopy}
+                    className="btn-outline-gold"
+                    style={{ minHeight: "32px", padding: "0 10px", fontSize: "var(--text-xs)" }}
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                    <span>{copied ? "Copied" : "Copy"}</span>
+                  </button>
                 </div>
               )}
             </div>
-
-            {/* Copy UPI Action */}
-            {status === 'pending' && order.upiId && (
-               <div className="mb-4">
-                  <div className="d-flex align-items-center justify-content-center gap-2 p-2 bg-light rounded-pill border">
-                     <span className="extra-small fw-900 text-secondary font-monospace">{order.upiId}</span>
-                     <button 
-                        onClick={handleCopy}
-                        className="btn-copy-mini"
-                     >
-                        {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                        <span className="ms-1">{copied ? 'Copied' : 'Copy ID'}</span>
-                     </button>
-                  </div>
-               </div>
-            )}
-
-            {/* Simple Footer/Status */}
-            {status === 'pending' && (
-               <div className="d-flex flex-column align-items-center gap-2">
-                  <div className="d-flex align-items-center gap-2 text-warning px-3 py-2 bg-warning-light rounded-pill">
-                     <Clock size={18} />
-                     <span className="fw-900 font-monospace">Expires in: {formatTime(timeLeft)}</span>
-                  </div>
-                  <div className="d-flex align-items-center gap-2 text-primary mt-2">
-                     <Loader2 size={16} className="animate-spin" />
-                     <span className="extra-small fw-900 uppercase tracking-widest">Awaiting Confirmation...</span>
-                  </div>
-               </div>
-            )}
-
-            {status === 'expired' && (
-              <button 
-                className="btn btn-danger w-100 py-3 rounded-pill fw-900 mt-3"
-                onClick={() => window.location.reload()}
+          ) : (
+            <div className="text-center py-4 mb-4">
+              <CreditCard size={48} className="mx-auto mb-3" style={{ color: "var(--accent)" }} />
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-4)" }}>
+                Pay securely with debit/credit card or net banking via payment gateway.
+              </p>
+              <button
+                type="button"
+                className="btn-gold w-100"
+                onClick={() => {
+                  if (order.qrCodeUrl) window.open(order.qrCodeUrl, "_blank");
+                }}
               >
-                RETRY PAYMENT
+                Proceed to Gateway Checkout
               </button>
-            )}
+            </div>
+          )}
 
-            <button 
-              onClick={onClose} 
-              className="mt-4 text-muted small fw-900 border-0 bg-transparent uppercase tracking-widest hover:text-dark"
-            >
-              Cancel Transaction
-            </button>
-          </motion.div>
-        </div>
-      )}
-
-      <style>{`
-        .bg-warning-light { background: rgba(245, 158, 11, 0.1); }
-        .btn-copy-mini {
-          border: none;
-          background: white;
-          padding: 4px 12px;
-          border-radius: 100px;
-          font-size: 10px;
-          font-weight: 900;
-          text-transform: uppercase;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-          display: flex;
-          align-items: center;
-          transition: all 0.2s ease;
-        }
-        .btn-copy-mini:hover { background: #f1f5f9; transform: scale(1.05); }
-      `}</style>
+          {/* Security footnote */}
+          <div
+            className="d-flex align-items-center justify-content-center gap-2 pt-3 border-top"
+            style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}
+          >
+            <ShieldCheck size={16} style={{ color: "var(--success)" }} />
+            <span>256-bit TLS encrypted bank-verified transaction</span>
+          </div>
+        </motion.div>
+      </div>
     </AnimatePresence>
   );
 };

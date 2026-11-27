@@ -1,13 +1,12 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-/** Format amount in Indian Rupees */
+/** Format amount in Indian Rupees with clean currency symbol and spacing */
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
+  const formatted = new Intl.NumberFormat("en-IN", {
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(amount || 0);
+  return `₹ ${formatted}`;
 }
 
 /** Format date to dd/mm/yyyy */

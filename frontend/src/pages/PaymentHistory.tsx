@@ -2,7 +2,7 @@ import API_BASE_URL from "../config/api";
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { History, CheckCircle, XCircle, Clock, Search, FileText, Loader2, IndianRupee } from "lucide-react";
+import { History, CheckCircle, XCircle, Clock, Search, FileText, Loader2 } from "lucide-react";
 
 interface OrderType {
   _id: string;
@@ -13,6 +13,27 @@ interface OrderType {
   createdAt: string;
 }
 
+const STATUS_MAP: Record<string, { icon: React.ReactNode; bg: string; color: string; label: string }> = {
+  success: {
+    icon: <CheckCircle size={14} />,
+    bg: "var(--success-bg)",
+    color: "var(--success)",
+    label: "SUCCESS",
+  },
+  failed: {
+    icon: <XCircle size={14} />,
+    bg: "var(--danger-bg)",
+    color: "var(--danger)",
+    label: "FAILED",
+  },
+  expired: {
+    icon: <Clock size={14} />,
+    bg: "var(--warning-bg)",
+    color: "var(--warning)",
+    label: "EXPIRED",
+  },
+};
+
 const PaymentHistory: React.FC = () => {
   const [orders, setOrders] = useState<OrderType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,97 +41,237 @@ const PaymentHistory: React.FC = () => {
 
   const token = localStorage.getItem("token");
 
-  const fetchHistory = async () => {
-    try {
-      const res = await axios.get(`${API_BASE_URL}/payment/history`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setOrders(res.data);
-    } catch (err) {
-      console.error("History fetch error", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/payment/history`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setOrders(res.data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, [token]);
 
-  useEffect(() => { fetchHistory(); }, []);
-
-  const filteredOrders = orders.filter(o => 
-    o.orderId.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    o.status.toLowerCase().includes(searchTerm.toLowerCase())
+  const filtered = orders.filter(
+    (o) =>
+      o.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.status.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getStatusPill = (status: string) => {
-    switch (status) {
-      case "success": return <span className="pill-success">SUCCESS</span>;
-      case "failed": return <span className="pill-danger">FAILED</span>;
-      case "expired": return <span className="pill-warning">EXPIRED</span>;
-      default: return <span className="pill-warning">PENDING</span>;
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "success": return <CheckCircle size={20} className="text-success" />;
-      case "failed": return <XCircle size={20} className="text-danger" />;
-      default: return <Clock size={20} className="text-warning" />;
-    }
-  };
-
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-container">
-      <div className="container-fluid px-md-4 py-4">
-        <div className="mb-5 d-flex align-items-center gap-4">
-          <div className="icon-badge-blue"><History size={32} /></div>
-          <div><h1 className="fw-900 text-gradient mb-1">Payment History</h1><p className="text-secondary small fw-800 text-uppercase letter-spacing-1">Audit Trail of Digital Transactions</p></div>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="main-content"
+      style={{ padding: "var(--space-6)" }}
+    >
+      {/* ── Header ── */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "var(--space-4)",
+          marginBottom: "var(--space-6)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "var(--radius-md)",
+              background: "var(--primary-light)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--primary)",
+            }}
+          >
+            <History size={24} />
+          </div>
+          <div>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)", marginBottom: 2 }}>
+              Payment History
+            </h2>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", margin: 0 }}>
+              {orders.length} digital transactions
+            </p>
+          </div>
         </div>
 
-        <div className="luxury-card p-0 overflow-hidden">
-          <div className="p-4 border-bottom border-glass d-flex justify-content-between align-items-center gap-3">
-             <h5 className="fw-900 text-gradient mb-0">Order Logs</h5>
-             <div className="search-box-light bg-light" style={{maxWidth: '300px'}}>
-                <Search size={18} className="text-primary" />
-                <input type="text" placeholder="Search Order ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-             </div>
-          </div>
-          <div className="table-responsive">
-            <table className="table mb-0 align-middle">
-              <thead>
+        {/* Search */}
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
+            background: "var(--bg-surface)",
+            border: "1.5px solid var(--border)",
+            borderRadius: "var(--radius-pill)",
+            padding: "var(--space-2) var(--space-4)",
+            minWidth: 240,
+          }}
+        >
+          <Search size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          <input
+            type="text"
+            placeholder="Search order ID or status…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              fontSize: "var(--text-sm)",
+              color: "var(--text-primary)",
+              width: "100%",
+            }}
+          />
+        </label>
+      </div>
+
+      {/* ── Summary Chips ── */}
+      {!loading && orders.length > 0 && (
+        <div style={{ display: "flex", gap: "var(--space-3)", marginBottom: "var(--space-5)", flexWrap: "wrap" }}>
+          {Object.entries(STATUS_MAP).map(([k, v]) => {
+            const count = orders.filter((o) => o.status === k).length;
+            if (count === 0) return null;
+            return (
+              <span
+                key={k}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                  padding: "var(--space-2) var(--space-4)",
+                  borderRadius: "var(--radius-pill)",
+                  background: v.bg,
+                  color: v.color,
+                  fontSize: "var(--text-xs)",
+                  fontWeight: "var(--weight-semibold)",
+                }}
+              >
+                {v.icon}
+                {count} {v.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Table ── */}
+      <div className="app-card" style={{ overflow: "hidden", padding: 0 }}>
+        <div style={{ padding: "var(--space-4) var(--space-5)", borderBottom: "1px solid var(--border)" }}>
+          <h6 style={{ margin: 0, fontWeight: "var(--weight-semibold)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            <FileText size={16} style={{ color: "var(--accent)" }} />
+            Transaction Audit Log
+          </h6>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="table-v3" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ paddingLeft: "var(--space-5)" }}>Order ID</th>
+                <th>Date & Time</th>
+                <th>Amount</th>
+                <th>Gateway Ref</th>
+                <th style={{ paddingRight: "var(--space-5)" }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th className="ps-4 py-4 text-muted extra-small fw-800 text-uppercase">Order ID</th>
-                  <th className="py-4 text-muted extra-small fw-800 text-uppercase">Date & Time</th>
-                  <th className="py-4 text-muted extra-small fw-800 text-uppercase">Amount</th>
-                  <th className="py-4 text-muted extra-small fw-800 text-uppercase">Gateway ID</th>
-                  <th className="py-4 text-muted extra-small fw-800 text-uppercase">Status</th>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "var(--space-12)" }}>
+                    <Loader2 size={32} className="animate-spin" style={{ color: "var(--accent)" }} />
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={5} className="text-center py-5"><Loader2 size={48} className="animate-spin text-primary mx-auto" /></td></tr>
-                ) : filteredOrders.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-5"><FileText size={48} className="mx-auto opacity-30 mb-3" /><p className="fw-800 uppercase text-muted">No transactions found</p></td></tr>
-                ) : (
-                  filteredOrders.map((order) => (
-                    <tr key={order._id}>
-                      <td className="ps-4 py-3 fw-900 font-monospace text-primary">{order.orderId}</td>
-                      <td className="text-muted extra-small fw-800 uppercase">
-                        <div>{new Date(order.createdAt).toLocaleDateString('en-GB')}</div>
-                        <div className="opacity-60">{new Date(order.createdAt).toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'})}</div>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>
+                    <div style={{ textAlign: "center", padding: "var(--space-12) var(--space-6)", color: "var(--text-muted)" }}>
+                      <FileText size={48} style={{ opacity: 0.25, marginBottom: "var(--space-3)" }} />
+                      <p style={{ fontWeight: "var(--weight-semibold)", maxWidth: "none" }}>No transactions found</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((order) => {
+                  const ss = STATUS_MAP[order.status] || STATUS_MAP["expired"];
+                  return (
+                    <tr key={order._id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      {/* Order ID */}
+                      <td
+                        style={{
+                          paddingLeft: "var(--space-5)",
+                          paddingTop: "var(--space-3)",
+                          paddingBottom: "var(--space-3)",
+                          fontFamily: "monospace",
+                          fontSize: "var(--text-sm)",
+                          fontWeight: "var(--weight-semibold)",
+                          color: "var(--primary)",
+                        }}
+                      >
+                        {order.orderId}
                       </td>
-                      <td className="fw-900 text-secondary">₹{order.amount.toLocaleString()}</td>
-                      <td className="font-monospace extra-small fw-900 text-muted">{order.paymentId || "—"}</td>
+
+                      {/* Date */}
                       <td>
-                        <div className="d-flex align-items-center gap-2">
-                           {getStatusIcon(order.status)}
-                           {getStatusPill(order.status)}
+                        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
+                          {new Date(order.createdAt).toLocaleDateString("en-GB")}
+                        </div>
+                        <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                          {new Date(order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </td>
+
+                      {/* Amount */}
+                      <td>
+                        <span style={{ fontWeight: "var(--weight-bold)", fontSize: "var(--text-base)", color: "var(--text-primary)" }}>
+                          ₹{order.amount.toLocaleString("en-IN")}
+                        </span>
+                      </td>
+
+                      {/* Gateway Ref */}
+                      <td>
+                        <span style={{ fontFamily: "monospace", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                          {order.paymentId || "—"}
+                        </span>
+                      </td>
+
+                      {/* Status */}
+                      <td style={{ paddingRight: "var(--space-5)" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "var(--space-2)",
+                            padding: "var(--space-1) var(--space-3)",
+                            borderRadius: "var(--radius-pill)",
+                            background: ss.bg,
+                            color: ss.color,
+                            fontSize: "var(--text-xs)",
+                            fontWeight: "var(--weight-bold)",
+                          }}
+                        >
+                          {ss.icon}
+                          {ss.label}
+                        </span>
+                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </motion.div>

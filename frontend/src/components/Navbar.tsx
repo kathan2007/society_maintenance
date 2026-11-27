@@ -1,243 +1,475 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  LayoutDashboard, CreditCard, MessageSquare, 
-  Bell, Users, ShieldCheck, LogOut, Building2, 
-  DollarSign, Menu, X, UserCircle, ChevronRight,
-  TrendingUp, PieChart, History
+import {
+  LayoutDashboard,
+  CreditCard,
+  MessageSquare,
+  Bell,
+  Users,
+  ShieldCheck,
+  LogOut,
+  Building2,
+  DollarSign,
+  Menu,
+  X,
+  PieChart,
+  History,
+  Sun,
+  Moon,
+  ChevronRight,
 } from "lucide-react";
+import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const role = localStorage.getItem("role");
-  const name = localStorage.getItem("name");
+  const { theme, toggleTheme } = useTheme();
+  const { user, logout: authLogout } = useAuth();
 
-  const logout = () => {
-    localStorage.clear();
+  const role = user?.role || localStorage.getItem("role") || "user";
+  const name = user?.name || localStorage.getItem("name") || "Resident";
+
+  const handleLogout = () => {
+    authLogout();
     navigate("/", { replace: true });
   };
 
-  const navItems = role === "admin" 
-    ? [
-        { path: "/admin-dashboard", label: "Dashboard", icon: <LayoutDashboard size={22} /> },
-        { path: "/expenses", label: "Finance / Ledger", icon: <DollarSign size={22} /> },
-        { path: "/admin-visitors", label: "Security", icon: <ShieldCheck size={22} /> },
-        { path: "/admin-users", label: "Residents", icon: <Users size={22} /> },
-        { path: "/admin-complaints", label: "Complaints", icon: <MessageSquare size={22} /> },
-        { path: "/reports", label: "Reports", icon: <PieChart size={22} /> },
-        { path: "/payment-history", label: "Transaction Logs", icon: <History size={22} /> },
-      ]
-    : [
-        { path: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={22} /> },
-        { path: "/expenses", label: "Society Ledger", icon: <TrendingUp size={22} /> },
-        { path: "/maintenance", label: "Payments", icon: <CreditCard size={22} /> },
-        { path: "/complaint", label: "Complaints", icon: <MessageSquare size={22} /> },
-        { path: "/notice", label: "Notices", icon: <Bell size={22} /> },
-        { path: "/visitor", label: "Visitors", icon: <Users size={22} /> },
-        { path: "/reports", label: "Reports", icon: <PieChart size={22} /> },
-        { path: "/payment-history", label: "Transaction Logs", icon: <History size={22} /> },
-      ];
+  const navItems =
+    role === "admin"
+      ? [
+          { path: "/admin-dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
+          { path: "/expenses", label: "Ledger & Expenses", icon: <DollarSign size={20} /> },
+          { path: "/admin-visitors", label: "Security & Gate", icon: <ShieldCheck size={20} /> },
+          { path: "/admin-users", label: "Residents", icon: <Users size={20} /> },
+          { path: "/admin-complaints", label: "Complaints", icon: <MessageSquare size={20} /> },
+          { path: "/reports", label: "Reports", icon: <PieChart size={20} /> },
+          { path: "/payment-history", label: "Transactions", icon: <History size={20} /> },
+        ]
+      : [
+          { path: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
+          { path: "/maintenance", label: "Maintenance & Pay", icon: <CreditCard size={20} /> },
+          { path: "/complaint", label: "Complaints", icon: <MessageSquare size={20} /> },
+          { path: "/notice", label: "Bulletins & Notices", icon: <Bell size={20} /> },
+          { path: "/visitor", label: "Visitor Pre-approval", icon: <Users size={20} /> },
+          { path: "/expenses", label: "Society Ledger", icon: <DollarSign size={20} /> },
+          { path: "/reports", label: "Reports", icon: <PieChart size={20} /> },
+          { path: "/payment-history", label: "Transactions", icon: <History size={20} /> },
+        ];
 
-  const toggleNavbar = () => setIsOpen(!isOpen);
+  const bottomNavItems =
+    role === "admin"
+      ? [
+          { path: "/admin-dashboard", label: "Home", icon: <LayoutDashboard size={20} /> },
+          { path: "/expenses", label: "Ledger", icon: <DollarSign size={20} /> },
+          { path: "/admin-complaints", label: "Tickets", icon: <MessageSquare size={20} /> },
+          { path: "/admin-users", label: "Members", icon: <Users size={20} /> },
+        ]
+      : [
+          { path: "/dashboard", label: "Home", icon: <LayoutDashboard size={20} /> },
+          { path: "/maintenance", label: "Bills", icon: <CreditCard size={20} /> },
+          { path: "/complaint", label: "Tickets", icon: <MessageSquare size={20} /> },
+          { path: "/notice", label: "Bulletins", icon: <Bell size={20} /> },
+        ];
 
   return (
     <>
-      {/* --- Unified Top Header (Visible on ALL devices) --- */}
-      <div className="unified-header">
-        <div className="d-flex align-items-center justify-content-between h-100 px-4">
+      {/* ── Fixed Top Header (Strictly 64px height, high contrast Navy) ── */}
+      <header
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: "var(--header-height)",
+          backgroundColor: "var(--bg-sidebar)",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+          zIndex: 1000,
+          display: "flex",
+          alignItems: "center",
+          boxShadow: "var(--shadow-md)",
+        }}
+      >
+        <div
+          className="container-limit w-100 d-flex align-items-center justify-content-between"
+          style={{ width: "100%" }}
+        >
+          {/* Brand & Menu Trigger */}
           <div className="d-flex align-items-center gap-3">
-             <button 
-                className="hamburger-trigger" 
-                onClick={toggleNavbar}
-                aria-label="Toggle Navigation"
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              aria-label="Toggle Navigation Menu"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-on-dark)",
+                cursor: "pointer",
+                padding: "8px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              {isOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+
+            <Link
+              to={role === "admin" ? "/admin-dashboard" : "/dashboard"}
+              className="d-flex align-items-center gap-2 text-decoration-none"
+              style={{ color: "var(--text-on-dark)" }}
+            >
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--accent)",
+                  color: "var(--on-accent)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
-                {isOpen ? <X size={28} /> : <Menu size={28} />}
-              </button>
-            <div className="d-flex align-items-center gap-2 border-start border-white border-opacity-25 ps-3 ms-1 d-none d-sm-flex">
-              <Building2 size={24} className="text-white" />
-              <span className="fw-900 text-white letter-spacing-2 small text-uppercase">Shree Hari Gift City Portal</span>
-            </div>
+                <Building2 size={20} />
+              </div>
+              <div>
+                <span
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontWeight: 700,
+                    fontSize: "var(--text-base)",
+                    letterSpacing: "0.02em",
+                    color: "var(--text-on-dark)",
+                    display: "block",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Shree Hari Gift City
+                </span>
+                <span
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    color: "var(--accent)",
+                    fontWeight: 500,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {role === "admin" ? "Administrative Portal" : "Resident Portal"}
+                </span>
+              </div>
+            </Link>
           </div>
-          
+
+          {/* Right Utilities: Theme Toggle + User Info + Logout */}
           <div className="d-flex align-items-center gap-3">
-             <div className="d-none d-md-block text-end me-2">
-                <p className="m-0 text-white extra-small fw-900 opacity-75 text-uppercase letter-spacing-1">Active Session</p>
-                <p className="m-0 text-white small fw-900 text-uppercase">{name || 'User'}</p>
-             </div>
-             <div className="bg-white rounded-circle p-1" style={{width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                <UserCircle size={28} className="text-primary" style={{color: '#2563eb'}} />
-             </div>
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              style={{
+                background: "rgba(255, 255, 255, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                color: "var(--text-on-dark)",
+                width: "40px",
+                height: "40px",
+                borderRadius: "var(--radius-md)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                transition: "all var(--transition-fast)",
+              }}
+            >
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+
+            {/* User Session Info (Desktop) */}
+            <div className="d-none d-md-flex flex-column text-end">
+              <span
+                style={{
+                  fontSize: "var(--text-xs)",
+                  color: "rgba(255, 255, 255, 0.7)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Signed In
+              </span>
+              <span
+                style={{
+                  fontSize: "var(--text-sm)",
+                  color: "var(--text-on-dark)",
+                  fontWeight: 600,
+                }}
+              >
+                {name}
+              </span>
+            </div>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              aria-label="Sign out of account"
+              title="Sign Out"
+              style={{
+                backgroundColor: "rgba(224, 60, 60, 0.15)",
+                border: "1px solid rgba(255, 100, 100, 0.25)",
+                color: "#ff8a98",
+                padding: "8px 14px",
+                borderRadius: "var(--radius-md)",
+                fontSize: "var(--text-sm)",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                cursor: "pointer",
+                minHeight: "40px",
+              }}
+            >
+              <LogOut size={16} />
+              <span className="d-none d-sm-inline">Sign Out</span>
+            </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* --- Page Overlay --- */}
+      {/* ── Sliding Navigation Drawer (Mobile & Desktop) ── */}
       <AnimatePresence>
         {isOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            onClick={() => setIsOpen(false)}
-            className="modal-overlay"
-            style={{ zIndex: 1150, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
-          />
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(11, 27, 58, 0.65)",
+                backdropFilter: "blur(4px)",
+                zIndex: 1100,
+              }}
+            />
+
+            {/* Drawer */}
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 250 }}
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                bottom: 0,
+                width: "300px",
+                maxWidth: "85vw",
+                backgroundColor: "var(--bg-sidebar)",
+                borderRight: "1px solid rgba(255, 255, 255, 0.1)",
+                zIndex: 1200,
+                display: "flex",
+                flexDirection: "column",
+                padding: "var(--space-6) var(--space-5)",
+                boxShadow: "var(--shadow-lg)",
+              }}
+            >
+              {/* Drawer Top */}
+              <div className="d-flex align-items-center justify-content-between mb-4 pb-3 border-bottom border-white border-opacity-10">
+                <div className="d-flex align-items-center gap-2">
+                  <div
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "var(--radius-sm)",
+                      backgroundColor: "var(--accent)",
+                      color: "var(--on-accent)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Building2 size={18} />
+                  </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: "var(--text-lg)",
+                      fontWeight: 700,
+                      color: "var(--text-on-dark)",
+                    }}
+                  >
+                    Gift City
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-on-dark)",
+                    cursor: "pointer",
+                    padding: "4px",
+                  }}
+                  aria-label="Close menu"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Navigation Items */}
+              <nav className="flex-grow-1 overflow-y-auto d-flex flex-column gap-1">
+                {navItems.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "var(--space-3) var(--space-4)",
+                        borderRadius: "var(--radius-md)",
+                        backgroundColor: isActive ? "rgba(201, 162, 75, 0.15)" : "transparent",
+                        color: isActive ? "var(--accent)" : "var(--text-on-dark)",
+                        fontWeight: isActive ? 600 : 400,
+                        fontSize: "var(--text-sm)",
+                        textDecoration: "none",
+                        transition: "all var(--transition-fast)",
+                        borderLeft: isActive ? "3px solid var(--accent)" : "3px solid transparent",
+                      }}
+                    >
+                      <div className="d-flex align-items-center gap-3">
+                        {item.icon}
+                        <span>{item.label}</span>
+                      </div>
+                      <ChevronRight size={16} opacity={isActive ? 1 : 0.4} />
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              {/* Drawer Footer User Profile */}
+              <div
+                style={{
+                  marginTop: "auto",
+                  paddingTop: "var(--space-4)",
+                  borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                }}
+              >
+                <div className="d-flex align-items-center justify-content-between mb-3">
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "var(--text-xs)",
+                        color: "rgba(255, 255, 255, 0.6)",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {role === "admin" ? "Admin" : "Resident"}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "var(--text-sm)",
+                        fontWeight: 600,
+                        color: "var(--text-on-dark)",
+                      }}
+                    >
+                      {name}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    title="Sign Out"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#ff8a98",
+                      cursor: "pointer",
+                      padding: "8px",
+                    }}
+                  >
+                    <LogOut size={18} />
+                  </button>
+                </div>
+              </div>
+            </motion.aside>
+          </>
         )}
       </AnimatePresence>
 
-      {/* --- Sliding Sidebar (Same for Mobile & Laptop) --- */}
-      <aside className={`main-sidebar-sliding ${isOpen ? "open" : ""}`}>
-        <div className="h-100 d-flex flex-column py-5 px-4">
-          
-          {/* Internal Header */}
-          <div className="mb-5 px-2 text-white">
-            <div className="d-flex align-items-center gap-3">
-              <div className="bg-white p-2 rounded-2">
-                <Building2 size={24} style={{color: '#2563eb'}} />
-              </div>
-              <h4 className="fw-900 m-0 letter-spacing-1">SHREE HARI GIFT CITY</h4>
-            </div>
-            <p className="text-white text-opacity-75 extra-small fw-900 m-0 mt-2 uppercase letter-spacing-1">Management Overview</p>
-          </div>
-
-          {/* Navigation Items (White on Blue) */}
-          <div className="flex-grow-1 custom-scrollbar overflow-y-auto">
-            <p className="extra-small text-white text-opacity-50 fw-900 text-uppercase mb-4 px-2 letter-spacing-2">Main Controls</p>
-            <div className="d-flex flex-column gap-2">
-              {navItems.map((item) => {
-                const isActive = location.pathname === item.path;
-                return (
-                  <Link 
-                    key={item.path}
-                    to={item.path} 
-                    className={`sliding-nav-link ${isActive ? 'active' : ''}`}
-                    onClick={() => {
-                        if (window.innerWidth < 1200) setIsOpen(false);
-                    }}
-                  >
-                    <span className="icon-span">{item.icon}</span>
-                    <span className="label-span">{item.label}</span>
-                    {isActive && <ChevronRight size={16} className="ms-auto" />}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Logout Action */}
-          <div className="mt-auto pt-4 border-top border-white border-opacity-10">
-            <button 
-              className="sliding-logout-btn w-100"
-              onClick={logout}
+      {/* ── Mobile Bottom Navigation Bar (≤ 768px) ── */}
+      <nav
+        className="d-md-none"
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: "60px",
+          backgroundColor: "var(--bg-sidebar)",
+          borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-around",
+          zIndex: 1000,
+        }}
+        aria-label="Mobile Navigation"
+      >
+        {bottomNavItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                color: isActive ? "var(--accent)" : "rgba(255, 255, 255, 0.65)",
+                textDecoration: "none",
+                fontSize: "11px",
+                fontWeight: isActive ? 600 : 400,
+                gap: "2px",
+                minWidth: "60px",
+                minHeight: "44px",
+              }}
             >
-              <LogOut size={20} />
-              <span>TERMINATE SESSION</span>
-            </button>
-          </div>
-
-        </div>
-      </aside>
-
-      <style>{`
-        .unified-header {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 70px;
-          background: #2563eb;
-          z-index: 1300;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-        }
-        
-        .hamburger-trigger {
-          background: transparent;
-          border: none;
-          color: white;
-          padding: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .hamburger-trigger:hover {
-          transform: scale(1.1);
-        }
-
-        .main-sidebar-sliding {
-          position: fixed;
-          left: -320px;
-          top: 70px;
-          bottom: 0;
-          width: 300px;
-          background: #2563eb;
-          z-index: 1200;
-          transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-          box-shadow: 10px 0 40px rgba(0, 0, 0, 0.1);
-          border-right: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .main-sidebar-sliding.open {
-          transform: translateX(320px);
-        }
-        
-        .sliding-nav-link {
-          display: flex;
-          align-items: center;
-          padding: 1.1rem 1.25rem;
-          border-radius: 12px;
-          text-decoration: none;
-          color: #ffffff;
-          transition: all 0.2s;
-          opacity: 0.8;
-          font-weight: 900;
-        }
-        .sliding-nav-link:hover {
-          background: rgba(255, 255, 255, 0.1);
-          opacity: 1;
-          transform: translateX(5px);
-        }
-        .sliding-nav-link.active {
-          background: #ffffff;
-          color: #000000 !important;
-          opacity: 1;
-          box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-        }
-        .sliding-nav-link .icon-span {
-          margin-right: 1.25rem;
-        }
-        .sliding-nav-link .label-span {
-          font-weight: 900;
-          font-size: 0.9rem;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-
-        .sliding-logout-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.75rem;
-          padding: 1.1rem;
-          border: 2px solid rgba(255,255,255,0.3);
-          background: transparent;
-          color: #ffffff;
-          border-radius: 12px;
-          font-weight: 900;
-          text-transform: uppercase;
-          font-size: 0.8rem;
-          letter-spacing: 1px;
-          transition: all 0.2s;
-        }
-        .sliding-logout-btn:hover {
-          background: #ffffff;
-          color: #2563eb;
-          border-color: #ffffff;
-        }
-      `}</style>
+              {item.icon}
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          onClick={() => setIsOpen(true)}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "rgba(255, 255, 255, 0.65)",
+            background: "none",
+            border: "none",
+            fontSize: "11px",
+            gap: "2px",
+            minWidth: "60px",
+            minHeight: "44px",
+            cursor: "pointer",
+          }}
+          aria-label="Open More Menu"
+        >
+          <Menu size={20} />
+          <span>More</span>
+        </button>
+      </nav>
     </>
   );
 };
