@@ -1,9 +1,11 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import cron from "node-cron";
 import http from "http";
 import { Server } from "socket.io";
+import rateLimit from "express-rate-limit";
 
 // Config & Utils
 import connectDB from "./config/db.js";
@@ -27,6 +29,25 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 dotenv.config();
 
 const app = express();
+
+// Security headers
+app.use(helmet({
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: false,
+}));
+app.set("trust proxy", 1);
+
+// Rate limiting — 100 requests per 15 min per IP
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+app.use("/register", rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { message: "Too many registrations." } }));
+app.use("/login", rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { message: "Too many login attempts." } }));
+app.use(limiter);
 
 // CORS - Allow frontend domains (Vercel, localhost dev)
 const allowedOrigins = [
@@ -367,6 +388,44 @@ app.get("/admin/users", verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ message: "Error" }); }
 });
 
+// ===== Admin Stats =====
+app.get("/admin/stats", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    const [totalResidents, openComplaints, maintenanceData, expenseData] = await Promise.all([
+      User.countDocuments({ role: "user" }),
+      Complaint.countDocuments({ status: { $in: ["Open", "In Progress"] } }),
+      Maintenance.aggregate([
+        { $group: { _id: "$status", total: { $sum: "$totalAmount" }, count: { $sum: 1 } } }
+      ]),
+      Expense.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
+    ]);
+
+    const paidData = maintenanceData.find(d => d._id === "Paid");
+    const pendingCount = maintenanceData.find(d => d._id === "Pending")?.count || 0;
+    const monthlyCollection = paidData?.total || 0;
+    const totalExpenses = expenseData[0]?.total || 0;
+
+    res.json({
+      totalResidents,
+      pendingPayments: pendingCount,
+      openComplaints,
+      monthlyCollection,
+      totalExpenses,
+      netBalance: monthlyCollection - totalExpenses,
+    });
+  } catch (err) { res.status(500).json({ message: "Error fetching stats" }); }
+});
+
+// ===== Admin delete user =====
+app.delete("/admin/users/:id", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ message: "Error" }); }
+});
+
 // Modular Routes Integration
 app.use("/api/payment", paymentRoutes);
 
@@ -393,3 +452,15 @@ server.on("error", (err) => {
     process.exit(1);
   }
 });
+
+// Graceful shutdown
+const gracefulShutdown = (signal) => {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  server.close(() => {
+    console.log("HTTP server closed.");
+    process.exit(0);
+  });
+  setTimeout(() => { console.error("Forced shutdown."); process.exit(1); }, 10000);
+};
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

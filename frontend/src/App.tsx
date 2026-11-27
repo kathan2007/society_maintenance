@@ -1,125 +1,125 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
-
-// Pages
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Dashboard from "./pages/Dashboard";
-import AdminDashboard from "./pages/AdminDashboard";
-import Maintenance from "./pages/Maintenance";
-import Complaint from "./pages/Complaint";
-import Notice from "./pages/Notice";
-import Visitor from "./pages/Visitor";
-import AdminComplaints from "./pages/AdminComplaints";
-import AdminUsers from "./pages/AdminUsers";
-import AdminVisitors from "./pages/AdminVisitors";
-import Expenses from "./pages/Expenses";
-import Reports from "./pages/Reports";
-import PaymentHistory from "./pages/PaymentHistory";
-import Checkout from "./pages/payment/Checkout";
-import Success from "./pages/payment/Success";
-import Failure from "./pages/payment/Failure";
-
-// Components
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./routes/ProtectedRoute";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
-import ProtectedRoute from "./components/ProtectedRoute";
 
-/* ---------- LAYOUT WRAPPER ---------- */
+// ── Lazy-loaded pages (code splitting) ──────────────────────
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const Maintenance = lazy(() => import("./pages/Maintenance"));
+const Complaint = lazy(() => import("./pages/Complaint"));
+const Notice = lazy(() => import("./pages/Notice"));
+const Visitor = lazy(() => import("./pages/Visitor"));
+const AdminComplaints = lazy(() => import("./pages/AdminComplaints"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminVisitors = lazy(() => import("./pages/AdminVisitors"));
+const Expenses = lazy(() => import("./pages/Expenses"));
+const Reports = lazy(() => import("./pages/Reports"));
+const PaymentHistory = lazy(() => import("./pages/PaymentHistory"));
+const Checkout = lazy(() => import("./pages/payment/Checkout"));
+const Success = lazy(() => import("./pages/payment/Success"));
+const Failure = lazy(() => import("./pages/payment/Failure"));
+
+/* ── Spinner shown while lazy chunks load ── */
+const PageLoader: React.FC = () => (
+  <div className="d-flex align-items-center justify-content-center min-vh-100">
+    <div className="spinner-border" style={{ color: "var(--color-accent)" }} role="status">
+      <span className="visually-hidden">Loading…</span>
+    </div>
+  </div>
+);
+
+/* ── Layout with Navbar + Footer ── */
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="app-layout min-vh-100" style={{ background: "#f8fafc", display: 'flex', flexDirection: 'column' }}>
+  <div className="app-layout min-vh-100 d-flex flex-column">
     <Navbar />
-    <main className="content-area" style={{ flex: '1 0 auto' }}>
-      <div className="container-fluid px-0">
-        {children}
-      </div>
+    <main className="flex-grow-1">
+      <div className="container-fluid px-0">{children}</div>
     </main>
     <Footer />
   </div>
 );
 
-/* ---------- ROUTE ARRAYS ---------- */
-const userPaths = [
-  { path: "/dashboard", Component: Dashboard },
-  { path: "/notice", Component: Notice },
-  { path: "/visitor", Component: Visitor },
-  { path: "/maintenance", Component: Maintenance },
-  { path: "/complaint", Component: Complaint },
-  { path: "/expenses", Component: Expenses },
-  { path: "/reports", Component: Reports },
-  { path: "/payment-history", Component: PaymentHistory },
-  { path: "/checkout", Component: Checkout },
-  { path: "/payment-success", Component: Success },
-  { path: "/payment-failure", Component: Failure },
+/* ── Route config ── */
+const userRoutes = [
+  { path: "/dashboard", El: Dashboard },
+  { path: "/maintenance", El: Maintenance },
+  { path: "/complaint", El: Complaint },
+  { path: "/notice", El: Notice },
+  { path: "/visitor", El: Visitor },
+  { path: "/expenses", El: Expenses },
+  { path: "/reports", El: Reports },
+  { path: "/payment-history", El: PaymentHistory },
+  { path: "/checkout", El: Checkout },
+  { path: "/payment-success", El: Success },
+  { path: "/payment-failure", El: Failure },
 ];
 
-const adminPaths = [
-  { path: "/admin-dashboard", Component: AdminDashboard },
-  { path: "/admin-complaints", Component: AdminComplaints },
-  { path: "/admin-users", Component: AdminUsers },
-  { path: "/admin-visitors", Component: AdminVisitors },
-  { path: "/expenses", Component: Expenses }, // Admins also use this for Ledger
-  { path: "/reports", Component: Reports },
+const adminRoutes = [
+  { path: "/admin-dashboard", El: AdminDashboard },
+  { path: "/admin-complaints", El: AdminComplaints },
+  { path: "/admin-users", El: AdminUsers },
+  { path: "/admin-visitors", El: AdminVisitors },
+  { path: "/expenses", El: Expenses },
+  { path: "/reports", El: Reports },
 ];
 
-/* ---------- ANIMATED ROUTES ---------- */
-const AnimatedRoutes = () => {
+/* ── Animated route switch ── */
+const AnimatedRoutes: React.FC = () => {
   const location = useLocation();
-  
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        {/* Public Routes */}
+        {/* Public */}
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* Resident/User Protected Routes */}
-        {userPaths.map(({ path, Component }) => (
+        {/* Resident routes */}
+        {userRoutes.map(({ path, El }) => (
           <Route
             key={path}
             path={path}
             element={
               <ProtectedRoute adminOnly={false}>
-                <Layout>
-                  <Component />
-                </Layout>
+                <Layout><El /></Layout>
               </ProtectedRoute>
             }
           />
         ))}
 
-        {/* Admin Protected Routes */}
-        {adminPaths.map(({ path, Component }) => (
+        {/* Admin routes */}
+        {adminRoutes.map(({ path, El }) => (
           <Route
-            key={path}
+            key={`admin-${path}`}
             path={path}
             element={
-              <ProtectedRoute adminOnly={true}>
-                <Layout>
-                  <Component />
-                </Layout>
+              <ProtectedRoute adminOnly>
+                <Layout><El /></Layout>
               </ProtectedRoute>
             }
           />
         ))}
 
-        {/* Global Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
   );
 };
 
-/* ---------- MAIN APP COMPONENT ---------- */
-const App: React.FC = () => {
-  return (
+/* ── Root App ── */
+const App: React.FC = () => (
+  <AuthProvider>
     <BrowserRouter>
-      <div className="main-wrapper">
+      <Suspense fallback={<PageLoader />}>
         <AnimatedRoutes />
-      </div>
+      </Suspense>
     </BrowserRouter>
-  );
-};
+  </AuthProvider>
+);
 
 export default App;
