@@ -6,11 +6,12 @@ import Order from "../models/Order.js";
  */
 export const createOrder = async (req, res) => {
   try {
-    const { maintenanceId, provider, idempotencyKey } = req.body;
+    const { amount, maintenanceId, provider, idempotencyKey } = req.body;
 
     const result = await paymentService.createOrder({
       userId: req.user.id,
       maintenanceId,
+      amount,
       provider: provider || "razorpay",
       idempotencyKey,
       ip: req.ip,

@@ -50,8 +50,10 @@ const MaintenancePage: React.FC = () => {
   const handlePay = async (bill: Maintenance) => {
     try {
       toast.loading("Initiating secure payment order...", { id: "pay-order" });
+      const payAmount = bill.totalAmount || bill.amount;
       const res = await apiClient.post("/api/payment/create-order", {
         maintenanceId: bill._id,
+        amount: payAmount,
       });
       toast.dismiss("pay-order");
       setActiveOrder(res.data);
