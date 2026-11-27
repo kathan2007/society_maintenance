@@ -41,6 +41,7 @@ const Navbar: React.FC = () => {
     role === "admin"
       ? [
           { path: "/admin-dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
+          { path: "/maintenance", label: "Maintenance Records", icon: <CreditCard size={20} /> },
           { path: "/expenses", label: "Ledger & Expenses", icon: <DollarSign size={20} /> },
           { path: "/admin-visitors", label: "Security & Gate", icon: <ShieldCheck size={20} /> },
           { path: "/admin-users", label: "Residents", icon: <Users size={20} /> },
@@ -63,8 +64,8 @@ const Navbar: React.FC = () => {
     role === "admin"
       ? [
           { path: "/admin-dashboard", label: "Home", icon: <LayoutDashboard size={20} /> },
+          { path: "/maintenance", label: "Maintenance", icon: <CreditCard size={20} /> },
           { path: "/expenses", label: "Ledger", icon: <DollarSign size={20} /> },
-          { path: "/admin-complaints", label: "Tickets", icon: <MessageSquare size={20} /> },
           { path: "/admin-users", label: "Members", icon: <Users size={20} /> },
         ]
       : [
