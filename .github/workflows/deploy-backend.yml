@@ -14,6 +14,7 @@ jobs:
 
     steps:
       - name: Trigger Render Deploy Hook
+        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL != '' }}
         run: |
           curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
             -H "Content-Type: application/json" \
@@ -21,12 +22,19 @@ jobs:
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
 
+      - name: Skip if Render Deploy Hook not set
+        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL == '' }}
+        run: |
+          echo "RENDER_DEPLOY_HOOK_URL secret is not configured in repository settings. Render auto-deploys via its Git integration."
+
       - name: Wait for backend to come online
+        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL != '' && secrets.BACKEND_URL != '' }}
         run: |
           echo "Waiting 90s for Render to build & deploy..."
           sleep 90
 
       - name: Smoke test /health
+        if: ${{ secrets.BACKEND_URL != '' }}
         run: |
           curl -f "${{ secrets.BACKEND_URL }}/health" \
             --max-time 30 \
