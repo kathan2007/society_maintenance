@@ -112,66 +112,132 @@ const Reports: React.FC = () => {
     if (!selectedMonth) return notify("Select a month first");
     const { monthlyIncome, monthlyExpenses, totalIncome, totalExpense, balance } = getMonthlyData();
     const doc = new jsPDF();
-    doc.setFillColor(11, 27, 58);
+    const monthLabel = fmtMonth(selectedMonth);
+
+    // Header matching user reference (Image 1)
+    doc.setFillColor(37, 99, 235); // #2563eb
     doc.rect(0, 0, 210, 36, "F");
-    doc.setTextColor(201, 162, 75);
-    doc.setFontSize(16);
+
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.text("SHREE HARI GIFT CITY", 14, 16);
-    doc.setTextColor(246, 243, 236);
-    doc.setFontSize(10);
+    doc.setFontSize(18);
+    doc.text("SHREE GIFT CITY", 14, 16);
+
     doc.setFont("helvetica", "normal");
-    doc.text(`Monthly Financial Report — ${fmtMonth(selectedMonth)}`, 14, 26);
-    doc.text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 14, 32);
+    doc.setFontSize(10.5);
+    doc.text(`Monthly Financial Report — ${monthLabel}`, 14, 26);
 
-    // Summary
-    const sy = 44;
-    const boxes = [
-      { label: "INCOME", value: totalIncome, fillColor: [221, 243, 228] as [number,number,number], textColor: [20, 98, 58] as [number,number,number] },
-      { label: "EXPENSE", value: totalExpense, fillColor: [251, 225, 228] as [number,number,number], textColor: [163, 34, 51] as [number,number,number] },
-      { label: "BALANCE", value: balance, fillColor: balance >= 0 ? [221, 243, 228] as [number,number,number] : [251, 225, 228] as [number,number,number], textColor: balance >= 0 ? [20, 98, 58] as [number,number,number] : [163, 34, 51] as [number,number,number] },
-    ];
-    boxes.forEach((box, i) => {
-      doc.setFillColor(...box.fillColor);
-      doc.roundedRect(14 + i * 65, sy, 60, 20, 3, 3, "F");
-      doc.setTextColor(...box.textColor);
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
-      doc.text(box.label, 18 + i * 65, sy + 7);
-      doc.setFontSize(12);
-      doc.text(`₹${box.value.toLocaleString("en-IN")}`, 18 + i * 65, sy + 16);
-    });
+    // Summary Boxes matching user reference
+    const summaryY = 46;
+    const boxWidth = 56;
+    const boxHeight = 22;
 
-    autoTable(doc, {
-      startY: sy + 28,
-      head: [["Flat", "Resident", "Amount"]],
-      body: [
-        ...monthlyIncome.map((m) => [m.userId?.flatNo || "-", m.userId?.name || "-", `₹${m.amount.toLocaleString("en-IN")}`]),
-        ["", "TOTAL INCOME", `₹${totalIncome.toLocaleString("en-IN")}`],
-      ],
-      headStyles: { fillColor: [20, 98, 58], textColor: [255, 255, 255] },
-      styles: { fontSize: 9 },
-    });
-
-    const expStart = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFontSize(11);
+    // Box 1: TOTAL INCOME
+    doc.setFillColor(236, 253, 245); // light green
+    doc.roundedRect(14, summaryY, boxWidth, boxHeight, 3, 3, "F");
     doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(16, 185, 129); // green text
+    doc.text("TOTAL INCOME", 18, summaryY + 8);
+    doc.setFontSize(12);
+    doc.text(`Rs. ${totalIncome.toLocaleString("en-IN")}`, 18, summaryY + 17);
+
+    // Box 2: TOTAL EXPENSE
+    doc.setFillColor(254, 242, 242); // light red
+    doc.roundedRect(77, summaryY, boxWidth, boxHeight, 3, 3, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(239, 68, 68); // red text
+    doc.text("TOTAL EXPENSE", 81, summaryY + 8);
+    doc.setFontSize(12);
+    doc.text(`Rs. ${totalExpense.toLocaleString("en-IN")}`, 81, summaryY + 17);
+
+    // Box 3: NET BALANCE
+    doc.setFillColor(254, 226, 226); // soft pink/red
+    doc.roundedRect(140, summaryY, boxWidth, boxHeight, 3, 3, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(balance >= 0 ? 16 : 220, balance >= 0 ? 185 : 38, balance >= 0 ? 129 : 38);
+    doc.text("NET BALANCE", 144, summaryY + 8);
+    doc.setFontSize(12);
+    doc.text(`Rs. ${balance.toLocaleString("en-IN")}`, 144, summaryY + 17);
+
+    // Section 1: INCOME Table
     doc.setTextColor(0, 0, 0);
-    doc.text("Expenses", 14, expStart);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("INCOME — Maintenance Collected", 14, 80);
+
+    const incomeRows = monthlyIncome.map((inc) => [
+      inc.userId?.flatNo || "-",
+      inc.userId?.name || "-",
+      `Rs. ${inc.amount.toLocaleString("en-IN")}`,
+    ]);
+    incomeRows.push(["", "TOTAL INCOME", `Rs. ${totalIncome.toLocaleString("en-IN")}`]);
+
     autoTable(doc, {
-      startY: expStart + 4,
-      head: [["Date", "Description", "Category", "Amount"]],
-      body: [
-        ...monthlyExpenses.map((e) => [new Date(e.date).toLocaleDateString("en-IN"), e.title, e.category || "-", `₹${e.amount.toLocaleString("en-IN")}`]),
-        ["", "", "TOTAL EXPENSE", `₹${totalExpense.toLocaleString("en-IN")}`],
-        ["", "", "NET BALANCE", `₹${balance.toLocaleString("en-IN")}`],
-      ],
-      headStyles: { fillColor: [163, 34, 51], textColor: [255, 255, 255] },
-      styles: { fontSize: 9 },
+      startY: 84,
+      head: [["Flat No", "Resident Name", "Amount"]],
+      body: incomeRows,
+      theme: "grid",
+      styles: {
+        font: "helvetica",
+        fontSize: 9.5,
+        cellPadding: 3.5,
+        textColor: [0, 0, 0],
+      },
+      headStyles: {
+        fillColor: [16, 185, 129], // Green header
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 9.5,
+      },
+      footStyles: { fontStyle: "bold" },
     });
+
+    // Section 2: EXPENSES Table
+    const expStartY = (doc as any).lastAutoTable.finalY + 12;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text("EXPENSES", 14, expStartY);
+
+    const expenseRows = monthlyExpenses.map((exp) => [
+      new Date(exp.date).toLocaleDateString("en-GB"),
+      exp.title,
+      exp.category || "General",
+      `Rs. ${exp.amount.toLocaleString("en-IN")}`,
+    ]);
+    expenseRows.push(["", "", "TOTAL EXPENSE", `Rs. ${totalExpense.toLocaleString("en-IN")}`]);
+    expenseRows.push(["", "", "NET BALANCE", `Rs. ${balance.toLocaleString("en-IN")}`]);
+
+    autoTable(doc, {
+      startY: expStartY + 4,
+      head: [["Date", "Description", "Category", "Amount"]],
+      body: expenseRows,
+      theme: "grid",
+      styles: {
+        font: "helvetica",
+        fontSize: 9.5,
+        cellPadding: 3.5,
+        textColor: [0, 0, 0],
+      },
+      headStyles: {
+        fillColor: [244, 63, 94], // Red header
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 9.5,
+      },
+    });
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Generated on ${new Date().toLocaleString("en-GB")} • SHREE GIFT CITY`, 14, 287);
 
     doc.save(`SHREE_GIFT_CITY_Report_${selectedMonth}.pdf`);
-    notify("PDF downloaded");
+    notify("PDF downloaded successfully!");
   };
 
   const generateExcel = () => {
